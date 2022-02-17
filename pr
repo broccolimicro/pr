@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import sys
 import os
 import re
 import shlex
@@ -271,7 +272,7 @@ def pr_test():
 			proc = processes[test.proc.name].flatten(test.proc.tmpl)
 			path = test.createDir()
 			with open(path + "/test.act", "w") as fptr:
-				print("import \"" + proc.path[4:] + "\";", file=fptr)
+				print("import \"" + proc.path + "\";", file=fptr)
 				print("import \"sink.act\";", file=fptr)
 				print("", file=fptr)
 
@@ -336,13 +337,24 @@ cycle""", file=fptr)
 
 if __name__ == "__main__":
 	if len(sys.argv) > 1:
-		if sys.argv[1] == "init":
+		if sys.argv[1] == "init" and len(sys.argv) > 2:
 			os.system("git init")
-			os.system("go mod init")
+			os.system("go mod init " + shlex.quote(sys.argv[2]))
 			os.system("mkdir -p prs chp")
 		elif sys.argv[1] == "vendor":
 			os.system("vend")
 		elif sys.argv[1] == "test":
 			pr_test()
-		
+		elif sys.argv[1] == "build" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
+			os.system("aflat test.act > test.prs")
+		elif sys.argv[1] == "spice" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
+			tech = "sky130"
+			if len(sys.argv) > 2:
+				tech = shlex.quote(sys.argv[2])
+			if os.path.exists("spice"):
+				os.system("rm -rf spice")
+			os.system("prspice -B -C " + tech + " -p 'testbench<>' -i 'dut' -s 'g.Vdd=1.8v;g.GND=0.0v;gwrap.Vdd=1.8v;gwrap.GND=0.0v' test.act prsim.rc -o spice")
+			os.system("mv spice/dut.spi spice/long.spi")
+			os.system("shortenspice.py spice/long.spi > spice/dut.spi")
+			os.system("cp *.dat spice")
 
