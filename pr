@@ -1,0 +1,348 @@
+#!/usr/bin/python3
+
+import os
+import re
+import shlex
+import enum
+import operator
+import copy
+
+# Expression Parser
+###############################################################################
+
+class Node:
+	def __init__(self, token_type, value=None):
+		self.token_type = token_type
+		self.value = value
+		self.children = []
+
+def lexical_analysis(s):
+	tokens = []
+	curr = None
+	for c in s:
+		if c in ['+', '-', '*', '/', '(', ')']:
+			if curr != None:
+				tokens.append(curr)
+				curr = None
+
+			tokens.append(Node(c, value=c))
+		elif (curr == None or curr.token_type != 'v') and re.match(r'\d', c):
+			if curr != None and curr.token_type != 'n':
+				tokens.append(curr)
+				curr = None
+
+			if curr != None:
+				curr.value += c
+			else:
+				curr = Node('n', value=c)
+		elif ((curr == None or curr.token_type != 'v') and re.match(r'[A-Za-z_]', c)) or (curr != None and curr.token_type == 'v' and re.match(r'[A-Za-z0-9_]', c)):
+			if curr != None and curr.token_type != 'v':
+				tokens.append(curr)
+				curr = None
+
+			if curr != None:
+				curr.value += c
+			else:
+				curr = Node('v', value=c)
+		else:
+			raise Exception('Invalid token: {}'.format(c))
+	if curr != None:
+		tokens.append(curr)
+	tokens.append(Node('e'))
+	return tokens
+
+def match(tokens, token):
+	if tokens[0].token_type == token:
+		return tokens.pop(0)
+	else:
+		raise Exception('Invalid syntax on token {}'.format(tokens[0].token_type))
+
+def parse_e(tokens):
+	left_node = parse_e2(tokens)
+
+	while tokens[0].token_type in ['+', '-']:
+		node = tokens.pop(0)
+		node.children.append(left_node)
+		node.children.append(parse_e2(tokens))
+		left_node = node
+
+	return left_node
+
+def parse_e2(tokens):
+	left_node = parse_e3(tokens)
+
+	while tokens[0].token_type in ['*', '/']:
+		node = tokens.pop(0)
+		node.children.append(left_node)
+		node.children.append(parse_e3(tokens))
+		left_node = node
+
+	return left_node
+
+def parse_e3(tokens):
+	if tokens[0].token_type == 'n':
+		return tokens.pop(0)
+	elif tokens[0].token_type == 'v':
+		return tokens.pop(0)
+
+	match(tokens, '(')
+	expression = parse_e(tokens)
+	match(tokens, ')')
+
+	return expression
+
+def parse(inputstring):
+	tokens = lexical_analysis(inputstring)
+	ast = parse_e(tokens)
+	match(tokens, 'e')
+	return ast
+
+operations = {
+	'+': operator.add,
+	'-': operator.sub,
+	'*': operator.mul,
+	'/': operator.truediv
+}
+
+def compute(expr, params):
+	node = expr
+	if isinstance(expr, str):
+		node = parse(expr)
+	if node.token_type == 'n':
+		return int(node.value)
+	elif node.token_type == 'v':
+		if node.value in params:
+			return int(params[node.value])
+	left_result = compute(node.children[0], params)
+	right_result = compute(node.children[1], params)
+	operation = operations[node.token_type]
+	return operation(left_result, right_result)
+
+# Test Parser
+###############################################################################
+
+class Deftype:
+	def __init__(self, name, params):
+		self.name = name
+		self.params = params
+
+	def __str__(self):
+		if self.params:
+			return self.name + "<" + ",".join(self.params) + ">"
+		else:
+			return self.name
+
+	def flatten(self, params):
+		for i, param in enumerate(self.params):
+			self.params[i] = str(compute(param, params))
+
+class Defarg:
+	def __init__(self, name, vtype):
+		self.name = name
+		self.vtype = vtype
+
+	def sink(self):
+		return "sink_" + str(self.vtype) + " sink_" + self.name + "(g, " + self.name + ");"
+
+	def inst(self):
+		return str(self.vtype) + " " + self.name + ";"
+
+class Defproc:
+	def __init__(self, path, tmpl, args):
+		self.path = path
+		self.tmpl = tmpl
+		self.args = args
+
+	def flatten(self, values):
+		params = {param.name: value for param, value in zip(self.tmpl, values)}
+
+		result = copy.deepcopy(self)
+		for arg in result.args:
+			arg.vtype.flatten(params)
+		return result
+
+	def argdef(self):
+		return "; ".join([str(arg.vtype) + " " + arg.name for arg in self.args])
+
+	def arglist(self):
+		return ",".join([arg.name for arg in self.args])	
+
+def parseArgs(line):
+	return [arg.strip() for arg in line.split(",")]
+
+def parseType(line):
+	o = line.find("<")
+	c = line.rfind(">")
+	if o != -1 and c != -1:
+		return Deftype(line[0:o], parseArgs(line[o+1:c]))
+	else:
+		return Deftype(line, [])
+
+def parseDefargs(line):
+	args = []
+	for elem in line.split(";"):
+		m = re.match(r'([a-zA-Z_][a-zA-Z_0-9]*(?:<[^>]*>)?) *(.*)', elem.strip())
+		if m is not None:
+			argtype = parseType(m.group(1).strip())
+			for arg in m.group(2).split(","):
+				args.append(Defarg(arg.strip(), argtype))
+	return args
+
+def findProcesses():
+	processes = {}
+	for line in os.popen("find * -name '*.act' | grep -v \"test/\""):
+		path = line.strip()
+		with open(path, "r") as fptr:
+			for m in re.findall(r'(?:template\s*<([^>]*)>)?\s*(?:export\s*)?defproc\s*([A-Za-z_][A-Za-z0-9_]*)\(([^\)]*)\)', fptr.read()):
+				if m[1] != '':
+					tmpl = None
+					if m[0] != '':
+						tmpl = parseDefargs(m[0])
+					name = m[1]
+					args = parseDefargs(m[2])
+					processes[name] = Defproc(path, tmpl, args)
+	return processes
+
+class Instance:
+	def __init__(self, name, tmpl, args):
+		self.name = name
+		self.tmpl = tmpl
+		self.args = args
+
+	def test(self):
+		return self.name + '_' + '_'.join(self.tmpl)
+
+	def typestr(self):
+		return self.name + "<" + ",".join(self.tmpl) + ">"
+
+class Deftest:
+	def __init__(self, proc, chptest):
+		self.proc = proc
+		self.chptest = chptest
+
+	def createDir(self):
+		path = testPath(self.proc.test())
+
+		chp = ""
+		for item in self.chptest:
+			if chp != "":
+				chp += " "
+			chp += shlex.quote(item)
+
+		os.system('mkdir -p \'' + path + '\'')
+		os.system('go test ' + projectRoot() + '/... -v -run ' + chp + ' -out \'' + path + '\'')
+		return path
+
+def findTests():
+	tests = []
+	for line in os.popen("find * -name '*.act' | xargs grep -rh \"^//.*TestUnit\""):
+		m = re.match(r'//\s*([^<]*)<([^>]*)>\(([^\)]*)\):(.*)', line)
+		tests.append(Deftest(Instance(m.group(1), parseArgs(m.group(2)), parseArgs(m.group(3))), m.group(4).strip().split(" ")))
+	return tests
+
+# Generator
+###############################################################################
+
+def projectRoot():
+	path = os.getcwd()
+	while path and path != "/" and not os.path.exists(path + "/go.mod"):
+		path = os.path.dirname(path)
+	return path
+
+def testPath(name):
+	name = shlex.quote(name)
+	if name[0] == '\'' and name[-1] == '\'':
+		name = name[1:-1]
+	return os.getcwd() + "/test/" + name
+
+# main
+###############################################################################
+
+def pr_test():
+	root = projectRoot()
+	if root == "/":
+		print("pr test: go.mod file not found in current directory or any parent directory")
+
+	processes = findProcesses()
+	tests = findTests()
+
+	for test in tests:
+		if test.proc.name in processes:
+			proc = processes[test.proc.name].flatten(test.proc.tmpl)
+			path = test.createDir()
+			with open(path + "/test.act", "w") as fptr:
+				print("import \"" + proc.path[4:] + "\";", file=fptr)
+				print("import \"sink.act\";", file=fptr)
+				print("", file=fptr)
+
+				print("\ndefproc testbench(" + proc.argdef() + ")", file=fptr)
+				print("{", file=fptr)
+				print("\t[ DUT ->", file=fptr)
+				print("\t" + test.proc.typestr() + " dut;", file=fptr)
+				for arg in proc.args:
+					print("\t" + arg.name + " = dut." + arg.name + ";", file=fptr)
+				print("\t]", file=fptr)
+				print("}\n", file=fptr)
+
+				for arg, val in zip(proc.args, test.proc.args):
+					print(arg.inst(), file=fptr)
+					if val != "" and val[-1] == '!':
+						print(arg.sink(), file=fptr)
+
+				print("testbench dut(" + proc.arglist() + ");", file=fptr)	
+
+			with open(path + "/prsim.rc", "w") as fptr:
+				print("""initialize
+random
+random_excl on
+
+set_reset g.Reset
+""", file=fptr)
+
+				for arg, val in zip(proc.args, test.proc.args):
+					if val != "":
+						if arg.vtype.name == "e1of":
+							print("bundle dut." + arg.name + ".d[0:" + arg.vtype.params[0] + "]", file=fptr)
+							print("channel dut." + arg.name + " e d[0:" + arg.vtype.params[0] + "]", file=fptr)
+							if val[-1] == '?':
+								print("inject dut." + arg.name + " request " + val[0:-1] + ".dat", file=fptr)
+							else:
+								print("expect dut." + arg.name + " request " + val[0:-1] + ".dat", file=fptr)
+
+				print("""
+watchall
+mode reset
+set g.Vdd 1
+set g.GND 0
+set g._sReset 0
+set g.sReset 1
+set g._pReset 0
+set g.pReset 1
+
+cycle
+
+set g._pReset 1
+set g.pReset 0
+
+cycle
+
+mode run
+status X
+
+set g._sReset 1
+set g.sReset 0
+
+cycle""", file=fptr)
+
+if __name__ == "__main__":
+	if len(sys.argv) > 1:
+		if sys.argv[1] == "init":
+			os.system("git init")
+			os.system("go mod init")
+			os.system("mkdir -p prs chp")
+		elif sys.argv[1] == "vendor":
+			os.system("vend")
+		elif sys.argv[1] == "test":
+			pr_test()
+		
+
