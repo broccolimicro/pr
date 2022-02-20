@@ -221,23 +221,31 @@ class Deftest:
 		self.proc = proc
 		self.chptest = chptest
 
+	def testPath(self):
+		name = shlex.quote(self.proc.test())
+		if name[0] == '\'' and name[-1] == '\'':
+			name = name[1:-1]
+		return os.getcwd() + "/test/" + name
+
 	def createDir(self):
-		path = testPath(self.proc.test())
+		path = self.testPath()
 
 		chp = ""
-		for item in self.chptest:
+		for item in self.chptest[1:len(self.chptest)]:
 			if chp != "":
 				chp += " "
 			chp += shlex.quote(item)
 
 		os.system('mkdir -p \'' + path + '\'')
-		os.system('go test ' + projectRoot() + '/... -v -run ' + chp + ' -out \'' + path + '\'')
+		print('go test ' + projectRoot() + '/... -v -run ' + shlex.quote(self.chptest[0]) + ' -args \'' + path + '\' ' + chp)
+		os.system('go test ' + projectRoot() + '/... -v -run ' + shlex.quote(self.chptest[0]) + ' -args \'' + path + '\' ' + chp)
 		return path
 
 def findTests():
 	tests = []
 	for line in os.popen("find * -name '*.act' | xargs grep -rh \"^//.*TestUnit\""):
 		m = re.match(r'//\s*([^<]*)<([^>]*)>\(([^\)]*)\):(.*)', line)
+		# TODO(edward.bingham) add support for multiple data streams for a single channel
 		tests.append(Deftest(Instance(m.group(1), parseArgs(m.group(2)), parseArgs(m.group(3))), m.group(4).strip().split(" ")))
 	return tests
 
@@ -250,11 +258,8 @@ def projectRoot():
 		path = os.path.dirname(path)
 	return path
 
-def testPath(name):
-	name = shlex.quote(name)
-	if name[0] == '\'' and name[-1] == '\'':
-		name = name[1:-1]
-	return os.getcwd() + "/test/" + name
+def relativeCwd(root):
+	return os.path.relpath(os.getcwd(), start=root)
 
 # main
 ###############################################################################
@@ -266,11 +271,17 @@ def pr_test():
 
 	processes = findProcesses()
 	tests = findTests()
-
+	
 	for test in tests:
 		if test.proc.name in processes:
 			proc = processes[test.proc.name].flatten(test.proc.tmpl)
 			path = test.createDir()
+			relCwd = relativeCwd(root)
+			if relCwd != ".":
+				proc.path = relCwd + "/" + proc.path
+			if proc.path.startswith("prs/"):
+				proc.path = proc.path[4:]
+
 			with open(path + "/test.act", "w") as fptr:
 				print("import \"" + proc.path + "\";", file=fptr)
 				print("import \"sink.act\";", file=fptr)
@@ -309,6 +320,7 @@ set_reset g.Reset
 								print("inject dut." + arg.name + " request " + val[0:-1] + ".dat", file=fptr)
 							else:
 								print("expect dut." + arg.name + " request " + val[0:-1] + ".dat", file=fptr)
+					# TODO(edward.bingham) add support for more channel types
 
 				print("""
 watchall
@@ -345,8 +357,18 @@ if __name__ == "__main__":
 			os.system("vend")
 		elif sys.argv[1] == "test":
 			pr_test()
+		elif sys.argv[1] == "sim":
+			os.system("prsim " + " ".join([shlex.quote(arg) for arg in sys.argv[2:]]))
+		elif sys.argv[1] == "view":
+			hasIndex = False
+			with open(sys.argv[2], 'r') as fptr:
+				if fptr.readline().startswith("Index"):
+					hasIndex = True
+			if hasIndex:
+				os.system("sed -i 's/^[^ ]* *//g' " + shlex.quote(sys.argv[2]))
+			os.system("gaw " + shlex.quote(sys.argv[2]))
 		elif sys.argv[1] == "build" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
-			os.system("aflat test.act > test.prs")
+			os.system("aflat -DDUT=true test.act > test.prs")
 		elif sys.argv[1] == "spice" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
 			tech = "sky130"
 			if len(sys.argv) > 2:
