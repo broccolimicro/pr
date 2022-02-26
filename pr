@@ -169,7 +169,30 @@ class Defproc:
 		return ",".join([arg.name for arg in self.args])	
 
 def parseArgs(line):
-	return [arg.strip() for arg in line.split(",")]
+	result = []
+	for arg in line.split(","):
+		result.append(arg.strip())
+	return result
+
+class ChpTerm:
+	def __init__(self, name, vdir):
+		self.name = name
+		self.vdir = vdir
+
+def parseChpTerms(line):
+	result = []
+	for arg in line.split(","):
+		arg = arg.strip()
+		vdir = ""
+		if len(arg) > 0 and arg[-1] in "?!":
+			vdir = arg[-1]
+			arg = arg[0:-1]
+
+		if " " in arg:
+			result.append(ChpTerm([sub.strip() for sub in arg.split(" ")], vdir))
+		else:
+			result.append(ChpTerm(arg, vdir))
+	return result
 
 def parseType(line):
 	o = line.find("<")
@@ -246,7 +269,7 @@ def findTests():
 	for line in os.popen("find * -name '*.act' | xargs grep -rh \"^//.*TestUnit\""):
 		m = re.match(r'//\s*([^<]*)<([^>]*)>\(([^\)]*)\):(.*)', line)
 		# TODO(edward.bingham) add support for multiple data streams for a single channel
-		tests.append(Deftest(Instance(m.group(1), parseArgs(m.group(2)), parseArgs(m.group(3))), m.group(4).strip().split(" ")))
+		tests.append(Deftest(Instance(m.group(1), parseArgs(m.group(2)), parseChpTerms(m.group(3))), m.group(4).strip().split(" ")))
 	return tests
 
 # Generator
@@ -263,6 +286,35 @@ def relativeCwd(root):
 
 # main
 ###############################################################################
+
+def emit_chan(name, proto, rails, chp):
+	return [
+		"bundle dut.{name}.d[0:{rails}]".format(
+			name  = name,
+			rails = rails),
+		"channel dut.{name} {proto} d[0:{rails}]".format(
+			name  = name,
+			proto = proto,
+			rails = rails),
+		"{kind} dut.{name} request {chp}.dat".format(
+			kind = "inject" if chp[-1] == '?' else "expect",
+			name = name,
+			chp  = chp[0:-1])
+	]
+
+def emit_bus(name, wires, posedge, pair, chp):
+	return [
+		"clocked_bus dut.{name}.d[0:{wires}] dut.{name}.e {edge}{pair}".format(
+			name  = name,
+			wires = wires,
+			edge  = "posedge" if posedge else "negedge",
+			pair  = " pair" if pair else ""),
+		"{kind} dut.{name}.d[0:{wires}] {chp}.dat".format(
+			kind  = "inject" if chp[-1] == '?' else "expect",
+			name  = name,
+			wires = wires,
+			chp   = chp[0:-1])
+	]
 
 def pr_test():
 	root = projectRoot()
@@ -298,7 +350,7 @@ def pr_test():
 
 				for arg, val in zip(proc.args, test.proc.args):
 					print(arg.inst(), file=fptr)
-					if val != "" and val[-1] == '!':
+					if val.name and val.vdir == '!':
 						print(arg.sink(), file=fptr)
 
 				print("testbench dut(" + proc.arglist() + ");", file=fptr)	
@@ -311,16 +363,16 @@ random_excl on
 set_reset g.Reset
 """, file=fptr)
 
+				channels = []
 				for arg, val in zip(proc.args, test.proc.args):
-					if val != "":
+					if val.name:
 						if arg.vtype.name == "e1of":
-							print("bundle dut." + arg.name + ".d[0:" + arg.vtype.params[0] + "]", file=fptr)
-							print("channel dut." + arg.name + " e d[0:" + arg.vtype.params[0] + "]", file=fptr)
-							if val[-1] == '?':
-								print("inject dut." + arg.name + " request " + val[0:-1] + ".dat", file=fptr)
-							else:
-								print("expect dut." + arg.name + " request " + val[0:-1] + ".dat", file=fptr)
-					# TODO(edward.bingham) add support for more channel types
+							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name)
+						elif arg.vtype.name == "bus2_e1of":
+							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name[0])
+							channels += emit_bus(arg.name, arg.vtype.params[0], True, True, val.name[1])
+
+				print("\n".join(channels), file=fptr)
 
 				print("""
 watchall
@@ -368,7 +420,7 @@ if __name__ == "__main__":
 				os.system("sed -i 's/^[^ ]* *//g' " + shlex.quote(sys.argv[2]))
 			os.system("gaw " + shlex.quote(sys.argv[2]))
 		elif sys.argv[1] == "build" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
-			os.system("aflat -DDUT=true test.act > test.prs")
+			os.system("aflat -DDUT=true -DPRSIM=true test.act > test.prs")
 		elif sys.argv[1] == "spice" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
 			tech = "sky130"
 			if len(sys.argv) > 2:
