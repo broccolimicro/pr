@@ -287,7 +287,7 @@ def relativeCwd(root):
 # main
 ###############################################################################
 
-def emit_chan(name, proto, rails, chp):
+def emit_chan(name, proto, rails, chp, vdir):
 	return [
 		"bundle dut.{name}.d[0:{rails}]".format(
 			name  = name,
@@ -297,12 +297,12 @@ def emit_chan(name, proto, rails, chp):
 			proto = proto,
 			rails = rails),
 		"{kind} dut.{name} request {chp}.dat".format(
-			kind = "inject" if chp[-1] == '?' else "expect",
+			kind = "inject" if vdir == '?' else "expect",
 			name = name,
-			chp  = chp[0:-1])
+			chp  = chp)
 	]
 
-def emit_bus(name, wires, posedge, pair, chp):
+def emit_bus(name, wires, posedge, pair, chp, vdir):
 	return [
 		"clocked_bus dut.{name}.d[0:{wires}] dut.{name}.e {edge}{pair}".format(
 			name  = name,
@@ -310,10 +310,10 @@ def emit_bus(name, wires, posedge, pair, chp):
 			edge  = "posedge" if posedge else "negedge",
 			pair  = " pair" if pair else ""),
 		"{kind} dut.{name}.d[0:{wires}] {chp}.dat".format(
-			kind  = "inject" if chp[-1] == '?' else "expect",
+			kind  = "inject" if vdir == '?' else "expect",
 			name  = name,
 			wires = wires,
-			chp   = chp[0:-1])
+			chp   = chp)
 	]
 
 def pr_test():
@@ -366,11 +366,16 @@ set_reset g.Reset
 				channels = []
 				for arg, val in zip(proc.args, test.proc.args):
 					if val.name:
-						if arg.vtype.name == "e1of":
-							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name)
+						if arg.vtype.name == "bool":
+							if val.name == "true":
+								channels += ["set dut." + arg.name + " 1"]
+							elif val.name == "false":
+								channels += ["set dut." + arg.name + " 0"]
+						elif arg.vtype.name == "e1of":
+							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
 						elif arg.vtype.name == "bus2_e1of":
-							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name[0])
-							channels += emit_bus(arg.name, arg.vtype.params[0], True, True, val.name[1])
+							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name[0], val.vdir)
+							channels += emit_bus(arg.name, arg.vtype.params[0], True, True, val.name[1], val.vdir)
 
 				print("\n".join(channels), file=fptr)
 
