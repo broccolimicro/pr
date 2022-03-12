@@ -129,7 +129,7 @@ class Deftype:
 
 	def __str__(self):
 		if self.params:
-			return self.name + "<" + ",".join(self.params) + ">"
+			return self.name + "<" + ",".join([str(param) for param in self.params]) + ">"
 		else:
 			return self.name
 
@@ -143,8 +143,15 @@ class Defarg:
 		self.vtype = vtype
 
 	def sink(self):
-		return "sink_" + str(self.vtype) + " sink_" + self.name + "(g, " + self.name + ");"
-
+		vtype = copy.deepcopy(self.vtype)
+		name = self.name
+		connect = self.name
+		if self.vtype.name == "bus2_e1of":
+			vtype.name = "e1of"
+			vtype.params = [vtype.params[1]]
+			connect += ".c"
+		vtype.params.append(6)
+		return "sink_" + str(vtype) + " sink_" + name + "(g, " + connect + ");"
 	def inst(self):
 		return str(self.vtype) + " " + self.name + ";"
 
@@ -234,7 +241,7 @@ class Instance:
 		self.args = args
 
 	def test(self):
-		return self.name + '_' + '_'.join(self.tmpl)
+		return self.name.replace('::', '_') + '_' + '_'.join(self.tmpl)
 
 	def typestr(self):
 		return self.name + "<" + ",".join(self.tmpl) + ">"
@@ -302,18 +309,21 @@ def emit_chan(name, proto, rails, chp, vdir):
 			chp  = chp)
 	]
 
-def emit_bus(name, wires, posedge, pair, chp, vdir):
+def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 	return [
-		"clocked_bus dut.{name}.d[0:{wires}] dut.{name}.e {edge}{pair}".format(
+		"clocked_bus dut.{name}.d[0:{wires}] dut.{clk} {edge}{pair}{half}".format(
 			name  = name,
+			clk   = clk,
 			wires = wires,
 			edge  = "posedge" if posedge else "negedge",
-			pair  = " pair" if pair else ""),
-		"{kind} dut.{name}.d[0:{wires}] {chp}.dat".format(
+			pair  = " pair" if pair else "",
+			half = " half"),
+		"{kind} dut.{name}.d[0:{wires}]{init} {chp}.dat".format(
 			kind  = "inject" if vdir == '?' else "expect",
 			name  = name,
 			wires = wires,
-			chp   = chp)
+			chp   = chp,
+			init = " init" if vdir == '!' else "")
 	]
 
 def pr_test():
@@ -325,8 +335,13 @@ def pr_test():
 	tests = findTests()
 	
 	for test in tests:
-		if test.proc.name in processes:
-			proc = processes[test.proc.name].flatten(test.proc.tmpl)
+		name = test.proc.name
+		if ':' in name:
+			idx = name.rindex(':')
+			name = name[idx+1:]
+
+		if name in processes:
+			proc = processes[name].flatten(test.proc.tmpl)
 			path = test.createDir()
 			relCwd = relativeCwd(root)
 			if relCwd != ".":
@@ -336,7 +351,7 @@ def pr_test():
 
 			with open(path + "/test.act", "w") as fptr:
 				print("import \"" + proc.path + "\";", file=fptr)
-				print("import \"sink.act\";", file=fptr)
+				print("import \"qdi/sink.act\";", file=fptr)
 				print("", file=fptr)
 
 				print("\ndefproc testbench(" + proc.argdef() + ")", file=fptr)
@@ -375,7 +390,7 @@ set_reset g.Reset
 							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
 						elif arg.vtype.name == "bus2_e1of":
 							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name[0], val.vdir)
-							channels += emit_bus(arg.name, arg.vtype.params[0], True, True, val.name[1], val.vdir)
+							channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name[1], val.vdir)
 
 				print("\n".join(channels), file=fptr)
 
@@ -425,14 +440,14 @@ if __name__ == "__main__":
 				os.system("sed -i 's/^[^ ]* *//g' " + shlex.quote(sys.argv[2]))
 			os.system("gaw " + shlex.quote(sys.argv[2]))
 		elif sys.argv[1] == "build" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
-			os.system("aflat -DDUT=true -DPRSIM=true test.act > test.prs")
+			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" aflat -DDUT=true -DPRSIM=true test.act > test.prs")
 		elif sys.argv[1] == "spice" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
 			tech = "sky130"
 			if len(sys.argv) > 2:
 				tech = shlex.quote(sys.argv[2])
 			if os.path.exists("spice"):
 				os.system("rm -rf spice")
-			os.system("prspice -B -C " + tech + " -p 'testbench<>' -i 'dut' -s 'g.Vdd=1.8v;g.GND=0.0v;gwrap.Vdd=1.8v;gwrap.GND=0.0v' test.act prsim.rc -o spice")
+			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" prspice -B -C " + tech + " -p 'testbench<>' -i 'dut' -s 'g.Vdd=1.8v;g.GND=0.0v;gwrap.Vdd=1.8v;gwrap.GND=0.0v' test.act prsim.rc -o spice")
 			os.system("mv spice/dut.spi spice/long.spi")
 			os.system("shortenspice.py spice/long.spi > spice/dut.spi")
 			os.system("cp *.dat spice")
