@@ -323,7 +323,7 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 			name  = name,
 			wires = wires,
 			chp   = chp,
-			init = " init" if vdir == '!' else "")
+			init = " init" if vdir == '?' else "")
 	]
 
 def pr_test():

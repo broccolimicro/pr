@@ -1,0 +1,108 @@
+#!/usr/bin/python3
+
+import sys
+import re
+
+class StackElem:
+	def __init__(self, parent):
+		self.parent = parent
+		self.methods = set()
+
+def emitOperation(operation):
+	#if len(operation) > 0:
+	#	print("\n".join(operation))
+	pass
+
+def emitFunction(name, args, definition):
+	#print(".func " + name + args + " {" + definition + "}")
+	pass
+
+def fixParams(line, stack):
+	cuts = []
+	for param in re.finditer(r'([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*(\([^\)]*\))?[ \t]*=[ \t]*(\'[^\']*\'|[^ \t]*)', line):
+		name = param.group(1)
+		args = param.group(2)
+		definition = param.group(3)
+
+		# Convert .param functions to .func commands
+		if args and len(args) > 0:
+			found = False
+			for elem in stack:
+				if name in elem.methods:
+					found = True
+					break
+			if not found:
+				emitFunction(name, args, definition[1:-1] if definition[0] == "'" else definition)
+				stack[-1].methods.add(name)
+			cuts.append((param.start(), param.end(), ""))
+		# TODO(edward.bingham) other parameter fixes
+	for cut in reversed(cuts):
+		line = line[0:cut[0]] + cut[2] + line[cut[1]+1:]
+	return line.strip()
+
+def fixOption(line):
+	print(line)
+	return line
+
+def hspice2Xyce(path):
+	stack = [StackElem("")]
+	operation = []
+
+	devices = "bcdefghikljmoqrstuvpxwyz"
+	commands = "."
+	continuations = "+"
+
+	with open(path, 'r') as fptr:
+		for number, line in enumerate(fptr):
+			line = line.strip()
+			if len(line) == 0 or line[0] == '*':
+				operation.append(line)
+			else:
+				if line[0] in continuations:
+					pass
+				elif line[0] in commands or line[0] in devices:
+					# print and clear stored multiline command
+					emitOperation(operation)
+					operation = []
+
+					if line[0] in commands:
+						command = re.split("[ \t]+", line)[0].lower().strip()
+
+						# Xyce does not support these commands
+						if command in [".prot", ".protect", ".unprot", ".unprotect"]:
+							continue
+
+						if command in [".data", ".lib", ".subckt", ".if"]:
+							stack.append(StackElem(command))
+						elif command == ".option":
+							line = fixOption(line)
+						elif command.startswith(".end"):
+							if command == ".endl" and stack[-1].parent == ".lib":
+								stack.pop()
+							elif command == ".ends" and stack[-1].parent == ".subckt":
+								stack.pop()
+							elif command == ".enddata" and stack[-1].parent == ".data":
+								stack.pop()
+							elif command == ".endif" and stack[-1].parent == ".if":
+								stack.pop()
+							elif command == ".end" and stack[-1].parent == "":
+								stack.pop()
+							else:
+								print("line " + str(number) + ": stack parse error '" + command + "' disagrees with '" + stack[-1].parent + "'", file=sys.stderr)
+								return
+				else:
+					print("line " + str(number) + ": unrecognized command '" + line + "'", file=sys.stderr)
+					return
+				
+				line = fixParams(line, stack)
+				if len(line.split(" ")) > 1:
+					operation.append(line)
+		emitOperation(operation)
+		operation = []
+
+if __name__ == "__main__":
+	if len(sys.argv) > 1:
+		hspice2Xyce(sys.argv[1])
+	else:
+		print("$ hspice2xyce path")
+		print("Converts an HSPICE netlist to a Xyce netlist and emits result to stdout.")
