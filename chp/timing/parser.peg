@@ -1,0 +1,66 @@
+{
+package timing
+
+import "strconv"
+
+type pair[K interface{}, V interface{}] struct {
+	key K
+	value V
+}
+}
+
+Top = _ pset:ProfileSet _ EOF {
+	return pset.(ProfileSet), nil
+}
+
+ProfileSet = "{" _ items:(key:String __ ":" __ value:Profile __ "," _ {
+	return pair[string, Profile]{
+		key: key.(string),
+		value: value.(Profile),
+	}, nil
+})* "}" {
+	m := make(map[string]Profile)
+	for _, item := range items.([]interface{}) {
+		p := item.(pair[string, Profile])
+		m[p.key] = p.value
+	}
+	return &profileSet{
+		profiles: m,
+	}, nil
+}
+
+Profile    = "{" _ items:(key:String __ ":" __ value:Float __ "," _ {
+	return pair[string, float64]{
+		key: key.(string),
+		value: value.(float64),
+	}, nil
+})* "}" {
+	m := make(map[string]float64)
+	for _, item := range items.([]interface{}) {
+		p := item.(pair[string, float64])
+		m[p.key] = p.value
+	}
+	return &profile{
+		values: m,
+	}, nil
+}
+
+String = "\"" [^"]* "\"" {
+	return string(c.text[1:len(c.text)-1]), nil
+}
+
+Float = [+-]? ([0-9]* ".")? [0-9]+ {
+	return strconv.ParseFloat(string(c.text), 64)
+}
+
+__ "nonewline" = [ \t]* {
+	return nil, nil
+}
+
+_ "whitespace" = [ \n\t\r]* {
+	return nil, nil
+}
+
+EOF = !. {
+	return nil, nil
+}
