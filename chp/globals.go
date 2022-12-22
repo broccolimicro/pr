@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"wyrm/chp/timing"
+	"pr/chp/timing"
 )
 
 type Globals interface {

@@ -3,7 +3,7 @@ package chp
 import (
 	"errors"
 
-	"wyrm/chp/timing"
+	"pr/chp/timing"
 )
 
 func Buffer[T interface{}](g Globals, L Receiver[T], R Sender[T]) {

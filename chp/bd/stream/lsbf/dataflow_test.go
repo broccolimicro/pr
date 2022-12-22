@@ -4,9 +4,9 @@ import (
 	"testing"
 	"math"
 
-	"wyrm/chp"
-	"wyrm/chp/bd/stream"
-	"wyrm/chp/param"
+	"pr/chp"
+	"pr/chp/bd/stream"
+	"pr/chp/param"
 	
 	"github.com/stretchr/testify/assert"
 )

@@ -1,7 +1,7 @@
 package stream
 
 import (
-	"wyrm/chp/bd"
+	"pr/chp/bd"
 )
 
 type Sender[T interface{}] interface {

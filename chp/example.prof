@@ -1,20 +1,20 @@
 {
-	"wyrm/chp.Buffer[...]": {
+	"pr/chp.Buffer[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "wyrm/chp.Copy[...]": {
+	}, "pr/chp.Copy[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "wyrm/chp.Split[...]": {
+	}, "pr/chp.Split[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "wyrm/chp.Merge[...]": {
+	}, "pr/chp.Merge[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,

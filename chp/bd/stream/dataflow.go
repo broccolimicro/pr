@@ -3,9 +3,9 @@ package stream
 import (
 	"errors"
 
-	"wyrm/chp"
-	"wyrm/chp/timing"
-	"wyrm/chp/bd"
+	"pr/chp"
+	"pr/chp/timing"
+	"pr/chp/bd"
 )
 
 func Buffer[T interface{}](g chp.Globals, L Receiver[T], R Sender[T]) {

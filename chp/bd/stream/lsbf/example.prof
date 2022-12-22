@@ -1,20 +1,20 @@
 {
-	"wyrm/chp/bd/stream.Buffer[...]": {
+	"pr/chp/bd/stream.Buffer[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "wyrm/chp/bd/stream.Copy[...]": {
+	}, "pr/chp/bd/stream.Copy[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "wyrm/chp/bd/stream.Split[...]": {
+	}, "pr/chp/bd/stream.Split[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "wyrm/chp/bd/stream.Merge[...]": {
+	}, "pr/chp/bd/stream.Merge[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"github.com/stretchr/testify/assert"
 
-	"wyrm/chp/param"
+	"pr/chp/param"
 )
 
 func TestIntegrationBuffer(t *testing.T) {

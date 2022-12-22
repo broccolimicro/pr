@@ -1,6 +1,6 @@
 package bd
 
-import "wyrm/chp"
+import "pr/chp"
 
 type Token[ctype, dtype interface{}] struct {
 	C ctype

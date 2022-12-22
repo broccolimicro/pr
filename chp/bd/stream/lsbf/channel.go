@@ -4,10 +4,10 @@ import (
 	"math/big"
 	"sync"
 
-	"wyrm/chp"
-	"wyrm/chp/timing"
-	"wyrm/chp/bd"
-	"wyrm/chp/bd/stream"
+	"pr/chp"
+	"pr/chp/timing"
+	"pr/chp/bd"
+	"pr/chp/bd/stream"
 )
 
 /******************************
