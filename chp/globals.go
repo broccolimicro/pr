@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"pr/chp/timing"
+	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
 )
 
 type Globals interface {

@@ -1,20 +1,20 @@
 {
-	"pr/chp.Buffer[...]": {
+	"git.broccolimicro.io/Broccoli/pr.git/chp.Buffer[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "pr/chp.Copy[...]": {
+	}, "git.broccolimicro.io/Broccoli/pr.git/chp.Copy[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "pr/chp.Split[...]": {
+	}, "git.broccolimicro.io/Broccoli/pr.git/chp.Split[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,
 		"e0": 10.0,
-	}, "pr/chp.Merge[...]": {
+	}, "git.broccolimicro.io/Broccoli/pr.git/chp.Merge[...]": {
 		"d0L": 0.0,
 		"d0R": 0.1,
 		"d0": 0.23,

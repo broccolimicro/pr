@@ -4,10 +4,10 @@ import (
 	"math/big"
 	"sync"
 
-	"pr/chp"
-	"pr/chp/timing"
-	"pr/chp/bd"
-	"pr/chp/bd/stream"
+	"git.broccolimicro.io/Broccoli/pr.git/chp"
+	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
+	"git.broccolimicro.io/Broccoli/pr.git/chp/bd"
+	"git.broccolimicro.io/Broccoli/pr.git/chp/bd/stream"
 )
 
 /******************************

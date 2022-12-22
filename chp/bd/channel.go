@@ -1,6 +1,6 @@
 package bd
 
-import "pr/chp"
+import "git.broccolimicro.io/Broccoli/pr.git/chp"
 
 type Token[ctype, dtype interface{}] struct {
 	C ctype

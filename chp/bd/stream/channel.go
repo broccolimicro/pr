@@ -1,7 +1,7 @@
 package stream
 
 import (
-	"pr/chp/bd"
+	"git.broccolimicro.io/Broccoli/pr.git/chp/bd"
 )
 
 type Sender[T interface{}] interface {
