@@ -16,6 +16,8 @@ var Conflict error = errors.New("Conflict")
 
 type Void struct {}
 
+var Null = Void{}
+
 type Action[vtype interface{}] struct {
 	T float64
 	V vtype
