@@ -116,14 +116,16 @@ func caller(skipFrames int) string {
 func (g *globals) Init(args ...interface{}) timing.Profile {
 	g.ports = args
 	for _, port := range g.ports {
-		if c, ok := port.(Recordable); ok {
-			c.SetGlobals(g)
-		} else if reflect.TypeOf(port).Kind() == reflect.Slice || reflect.TypeOf(port).Kind() == reflect.Array {
-			items := reflect.ValueOf(port)
-			for i := 0; i < items.Len(); i++ {
-				item := items.Index(i).Interface()
-				if c, ok := item.(Recordable); ok {
-					c.SetGlobals(g)
+		if port != nil {
+			if c, ok := port.(Recordable); ok {
+				c.SetGlobals(g)
+			} else if reflect.TypeOf(port).Kind() == reflect.Slice || reflect.TypeOf(port).Kind() == reflect.Array {
+				items := reflect.ValueOf(port)
+				for i := 0; i < items.Len(); i++ {
+					item := items.Index(i).Interface()
+					if c, ok := item.(Recordable); ok {
+						c.SetGlobals(g)
+					}
 				}
 			}
 		}
@@ -153,19 +155,21 @@ func (g *globals) Done() {
 		panic(r)
 	}
 	for _, port := range g.ports {
-		if c, ok := port.(io.Closer); ok {
-			err := c.Close()
-			if err != nil {
-				fmt.Println(err)
-			}
-		} else if reflect.TypeOf(port).Kind() == reflect.Slice || reflect.TypeOf(port).Kind() == reflect.Array {
-			items := reflect.ValueOf(port)
-			for i := 0; i < items.Len(); i++ {
-				item := items.Index(i).Interface()
-				if c, ok := item.(io.Closer); ok {
-					err := c.Close()
-					if err != nil {
-						fmt.Println(err)
+		if port != nil {
+			if c, ok := port.(io.Closer); ok {
+				err := c.Close()
+				if err != nil {
+					fmt.Println(err)
+				}
+			} else if reflect.TypeOf(port).Kind() == reflect.Slice || reflect.TypeOf(port).Kind() == reflect.Array {
+				items := reflect.ValueOf(port)
+				for i := 0; i < items.Len(); i++ {
+					item := items.Index(i).Interface()
+					if c, ok := item.(io.Closer); ok {
+						err := c.Close()
+						if err != nil {
+							fmt.Println(err)
+						}
 					}
 				}
 			}
