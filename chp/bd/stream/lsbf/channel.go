@@ -109,7 +109,7 @@ func (self *sender) Send(value int64, args ...float64) float64 {
 	return self.raw.SendStream(FromInt64(value, self.base), args...)
 }
 
-func (self *sender) Ready(args ...float64) <-chan float64 {
+func (self *sender) Ready(args ...float64) chp.Signal {
 	return self.raw.Ready(args...)
 }
 
@@ -151,8 +151,8 @@ func (self *receiver) Recv(args ...float64) (int64, float64) {
 }
 
 // Not supported by this receiver type, autopanic
-func (self *receiver) Valid(args ...float64) <-chan chp.Action[int64] {
-	result := make(chan chp.Action[int64], 1)
+func (self *receiver) Valid(args ...float64) chp.Value[int64] {
+	var result chp.Value[int64] = make(chan chp.Action[int64], 1)
 	close(result)
 	return result
 }
@@ -266,7 +266,7 @@ func (self *bigsender) Send(value *big.Int, args ...float64) float64 {
 	return self.raw.SendStream(FromBigInt(value, self.base), args...)
 }
 
-func (self *bigsender) Ready(args ...float64) <-chan float64 {
+func (self *bigsender) Ready(args ...float64) chp.Signal {
 	return self.raw.Ready(args...)
 }
 
@@ -308,8 +308,8 @@ func (self *bigreceiver) Recv(args ...float64) (*big.Int, float64) {
 }
 
 // Not supported by this bigreceiver type, autopanic
-func (self *bigreceiver) Valid(args ...float64) <-chan chp.Action[*big.Int] {
-	result := make(chan chp.Action[*big.Int], 1)
+func (self *bigreceiver) Valid(args ...float64) chp.Value[*big.Int] {
+	var result chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
 	close(result)
 	return result
 }
@@ -410,8 +410,8 @@ func (self *parallelsender) Send(value int64, args ...float64) float64 {
 	return ts.Get()
 }
 
-func (self *parallelsender) Ready(args ...float64) <-chan float64 {
-	result := make(chan float64, 1)
+func (self *parallelsender) Ready(args ...float64) chp.Signal {
+	var result chp.Signal = make(chan float64, 1)
 	close(result)
 	return result
 }
@@ -482,8 +482,8 @@ func (self *parallelreceiver) Recv(args ...float64) (int64, float64) {
 }
 
 // Not supported by this parallelreceiver type, autopanic
-func (self *parallelreceiver) Valid(args ...float64) <-chan chp.Action[int64] {
-	result := make(chan chp.Action[int64], 1)
+func (self *parallelreceiver) Valid(args ...float64) chp.Value[int64] {
+	var result chp.Value[int64] = make(chan chp.Action[int64], 1)
 	close(result)
 	return result
 }
@@ -590,8 +590,8 @@ func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 	return ts.Get()
 }
 
-func (self *bigparallelsender) Ready(args ...float64) <-chan float64 {
-	result := make(chan float64, 1)
+func (self *bigparallelsender) Ready(args ...float64) chp.Signal {
+	var result chp.Signal = make(chan float64, 1)
 	close(result)
 	return result
 }
@@ -662,8 +662,8 @@ func (self *bigparallelreceiver) Recv(args ...float64) (*big.Int, float64) {
 }
 
 // Not supported by this channel type, autopanic
-func (self *bigparallelreceiver) Valid(args ...float64) <-chan chp.Action[*big.Int] {
-	result := make(chan chp.Action[*big.Int], 1)
+func (self *bigparallelreceiver) Valid(args ...float64) chp.Value[*big.Int] {
+	var result chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
 	close(result)
 	return result
 }

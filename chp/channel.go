@@ -25,6 +25,10 @@ type Action[vtype interface{}] struct {
 
 type Value[T interface{}] chan Action[T]
 
+func (p Value[T]) C() chan Action[T] {
+	return chan Action[T](p)
+}
+
 func (p Value[T]) Recv() (T, float64) {
 	a, ok := <-p
 	if !ok {
@@ -34,6 +38,10 @@ func (p Value[T]) Recv() (T, float64) {
 }
 
 type Signal chan float64
+
+func (p Signal) C() chan float64 {
+	return chan float64(p)
+}
 
 func (p Signal) Send() float64 {
 	a, ok := <-p
@@ -53,7 +61,7 @@ type Sender[T interface{}] interface {
 
 	Offer(value T, args ...float64) Signal
 	Send(value T, args ...float64) float64
-	Ready(args ...float64) <-chan float64
+	Ready(args ...float64) Signal
 	Wait(args ...float64) float64
 }
 
@@ -63,7 +71,7 @@ type Receiver[T interface{}] interface {
 
 	Expect(args ...float64) Value[T]
 	Recv(args ...float64) (T, float64)
-	Valid(args ...float64) <-chan Action[T]
+	Valid(args ...float64) Value[T]
 	Probe(args ...float64) (T, float64)
 }
 
@@ -403,8 +411,8 @@ func (s *sender[T]) Offer(value T, args ...float64) Signal {
 	return send
 }
 
-func (s *sender[T]) Ready(args ...float64) <-chan float64 {
-	var send chan float64 = make(chan float64, 1)
+func (s *sender[T]) Ready(args ...float64) Signal {
+	var send Signal = make(chan float64, 1)
 
 	go func() {
 		defer Recover(send)
@@ -517,8 +525,8 @@ func (r *receiver[T]) Expect(args ...float64) Value[T] {
 	return recv
 }
 
-func (r *receiver[T]) Valid(args ...float64) <-chan Action[T] {
-	var recv chan Action[T] = make(chan Action[T], 1)
+func (r *receiver[T]) Valid(args ...float64) Value[T] {
+	var recv Value[T] = make(chan Action[T], 1)
 
 	go func() {
 		defer Recover(recv)
