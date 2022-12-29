@@ -54,11 +54,15 @@ func Split[T interface{}](g Globals, C Receiver[int], L Receiver[T], R []Sender[
 	e0 := p.Find("e0")
 
 	for {
-		c, tc := C.Recv(d0C)
+		pc := C.Expect(d0C)
+		pl := L.Expect(d0L)
+
+		c, tc := pc.Recv()
 		if c < 0 || c >= len(R) {
 			panic(errors.New("split control channel out of bounds"))
 		}
-		x, tl := L.Recv(d0L)
+
+		x, tl := pl.Recv()
 		t := timing.Max(tc, tl)
 		tr := R[c].Send(x, t+d0R)
 

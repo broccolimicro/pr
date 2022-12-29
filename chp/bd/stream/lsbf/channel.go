@@ -94,6 +94,17 @@ func (self *sender) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
 }
 
+func (self *sender) Offer(value int64, args ...float64) chp.Signal {
+	var send chp.Signal = make(chan float64, 1)
+
+	go func() {
+		defer chp.Recover(chan float64(send))
+		send <- self.Send(value, args...)
+	}()
+
+	return send
+}
+
 func (self *sender) Send(value int64, args ...float64) float64 {
 	return self.raw.SendStream(FromInt64(value, self.base), args...)
 }
@@ -120,6 +131,18 @@ func (self *receiver) Base() int64 {
 
 func (self *receiver) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
+}
+
+func (r *receiver) Expect(args ...float64) chp.Value[int64] {
+	var recv chp.Value[int64] = make(chan chp.Action[int64], 1)
+
+	go func() {
+		defer chp.Recover(chan chp.Action[int64](recv))
+		v, t := r.Recv(args...)
+		recv <- chp.Action[int64]{t, v}
+	}()
+
+	return recv
 }
 
 func (self *receiver) Recv(args ...float64) (int64, float64) {
@@ -228,6 +251,17 @@ func (self *bigsender) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
 }
 
+func (self *bigsender) Offer(value *big.Int, args ...float64) chp.Signal {
+	var send chp.Signal = make(chan float64, 1)
+
+	go func() {
+		defer chp.Recover(chan float64(send))
+		send <- self.Send(value, args...)
+	}()
+
+	return send
+}
+
 func (self *bigsender) Send(value *big.Int, args ...float64) float64 {
 	return self.raw.SendStream(FromBigInt(value, self.base), args...)
 }
@@ -254,6 +288,18 @@ func (self *bigreceiver) Base() int64 {
 
 func (self *bigreceiver) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
+}
+
+func (r *bigreceiver) Expect(args ...float64) chp.Value[*big.Int] {
+	var recv chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
+
+	go func() {
+		defer chp.Recover(chan chp.Action[*big.Int](recv))
+		v, t := r.Recv(args...)
+		recv <- chp.Action[*big.Int]{t, v}
+	}()
+
+	return recv
 }
 
 func (self *bigreceiver) Recv(args ...float64) (*big.Int, float64) {
@@ -331,6 +377,17 @@ func (self *parallelsender) SetGlobals(g chp.Globals) {
 	}
 }
 
+func (self *parallelsender) Offer(value int64, args ...float64) chp.Signal {
+	var send chp.Signal = make(chan float64, 1)
+
+	go func() {
+		defer chp.Recover(chan float64(send))
+		send <- self.Send(value, args...)
+	}()
+
+	return send
+}
+
 func (self *parallelsender) Send(value int64, args ...float64) float64 {
 	digits := FromInt64(value, self.base)
 	g := &sync.WaitGroup{}
@@ -386,6 +443,18 @@ func (self *parallelreceiver) SetGlobals(g chp.Globals) {
 	for _, r := range self.raw {
 		r.SetGlobals(g)
 	}
+}
+
+func (r *parallelreceiver) Expect(args ...float64) chp.Value[int64] {
+	var recv chp.Value[int64] = make(chan chp.Action[int64], 1)
+
+	go func() {
+		defer chp.Recover(chan chp.Action[int64](recv))
+		v, t := r.Recv(args...)
+		recv <- chp.Action[int64]{t, v}
+	}()
+
+	return recv
 }
 
 func (self *parallelreceiver) Recv(args ...float64) (int64, float64) {
@@ -488,6 +557,17 @@ func (self *bigparallelsender) SetGlobals(g chp.Globals) {
 	}
 }
 
+func (self *bigparallelsender) Offer(value *big.Int, args ...float64) chp.Signal {
+	var send chp.Signal = make(chan float64, 1)
+
+	go func() {
+		defer chp.Recover(chan float64(send))
+		send <- self.Send(value, args...)
+	}()
+
+	return send
+}
+
 func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 	digits := FromBigInt(value, self.base)
 	g := &sync.WaitGroup{}
@@ -543,6 +623,18 @@ func (self *bigparallelreceiver) SetGlobals(g chp.Globals) {
 	for _, r := range self.raw {
 		r.SetGlobals(g)
 	}
+}
+
+func (r *bigparallelreceiver) Expect(args ...float64) chp.Value[*big.Int] {
+	var recv chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
+
+	go func() {
+		defer chp.Recover(chan chp.Action[*big.Int](recv))
+		v, t := r.Recv(args...)
+		recv <- chp.Action[*big.Int]{t, v}
+	}()
+
+	return recv
 }
 
 func (self *bigparallelreceiver) Recv(args ...float64) (*big.Int, float64) {

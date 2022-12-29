@@ -23,6 +23,26 @@ type Action[vtype interface{}] struct {
 	V vtype
 }
 
+type Value[T interface{}] chan Action[T]
+
+func (p Value[T]) Recv() (T, float64) {
+	a, ok := <-p
+	if !ok {
+		panic(Deadlock)
+	}
+	return a.V, a.T
+}
+
+type Signal chan float64
+
+func (p Signal) Send() float64 {
+	a, ok := <-p
+	if !ok {
+		panic(Deadlock)
+	}
+	return a
+}
+
 type Recordable interface {
 	SetGlobals(g Globals)
 }
@@ -31,6 +51,7 @@ type Sender[T interface{}] interface {
 	io.Closer
 	Recordable
 
+	Offer(value T, args ...float64) Signal
 	Send(value T, args ...float64) float64
 	Ready(args ...float64) <-chan float64
 	Wait(args ...float64) float64
@@ -40,6 +61,7 @@ type Receiver[T interface{}] interface {
 	io.Closer
 	Recordable
 
+	Expect(args ...float64) Value[T]
 	Recv(args ...float64) (T, float64)
 	Valid(args ...float64) <-chan Action[T]
 	Probe(args ...float64) (T, float64)
@@ -370,6 +392,17 @@ func (s *sender[T]) Send(value T, args ...float64) float64 {
 	return t - s.g.Curr()
 }
 
+func (s *sender[T]) Offer(value T, args ...float64) Signal {
+	var send Signal = make(chan float64, 1)
+
+	go func() {
+		defer Recover(chan float64(send))
+		send <- s.Send(value, args...)
+	}()
+
+	return send
+}
+
 func (s *sender[T]) Ready(args ...float64) <-chan float64 {
 	var send chan float64 = make(chan float64, 1)
 
@@ -470,6 +503,18 @@ func (r *receiver[T]) Recv(args ...float64) (T, float64) {
 	}
 
 	return result.V, result.T - r.g.Curr()
+}
+
+func (r *receiver[T]) Expect(args ...float64) Value[T] {
+	var recv Value[T] = make(chan Action[T], 1)
+
+	go func() {
+		defer Recover(chan Action[T](recv))
+		v, t := r.Recv(args...)
+		recv <- Action[T]{t, v}
+	}()
+
+	return recv
 }
 
 func (r *receiver[T]) Valid(args ...float64) <-chan Action[T] {

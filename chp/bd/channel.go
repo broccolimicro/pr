@@ -11,6 +11,7 @@ type Sender[ctype, dtype interface{}] interface {
 	chp.Sender[Token[ctype, dtype]]
 
 	SendToken(c ctype, d dtype, args ...float64) float64
+	OfferToken(c ctype, d dtype, args ...float64) chp.Signal
 }
 
 type Receiver[ctype, dtype interface{}] interface {
@@ -47,4 +48,8 @@ func ChanArr[ctype, dtype interface{}](name string, n int, slack int64) ([]Sende
 
 func (self *sender[ctype, dtype]) SendToken(c ctype, d dtype, args ...float64) float64 {
 	return self.Sender.Send(Token[ctype, dtype]{c, d}, args...)
+}
+
+func (self *sender[ctype, dtype]) OfferToken(c ctype, d dtype, args ...float64) chp.Signal {
+	return self.Sender.Offer(Token[ctype, dtype]{c, d}, args...)
 }
