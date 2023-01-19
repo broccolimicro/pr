@@ -1,6 +1,9 @@
 package bd
 
-import "git.broccolimicro.io/Broccoli/pr.git/chp"
+import (
+	"git.broccolimicro.io/Broccoli/pr.git/chp"
+	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
+)
 
 type Token[ctype, dtype interface{}] struct {
 	C ctype
@@ -11,7 +14,7 @@ type Sender[ctype, dtype interface{}] interface {
 	chp.Sender[Token[ctype, dtype]]
 
 	SendToken(c ctype, d dtype, args ...float64) float64
-	OfferToken(c ctype, d dtype, args ...float64) chp.Signal
+	OfferToken(c ctype, d dtype, args ...float64) timing.Signal
 }
 
 type Receiver[ctype, dtype interface{}] interface {
@@ -50,6 +53,6 @@ func (self *sender[ctype, dtype]) SendToken(c ctype, d dtype, args ...float64) f
 	return self.Sender.Send(Token[ctype, dtype]{c, d}, args...)
 }
 
-func (self *sender[ctype, dtype]) OfferToken(c ctype, d dtype, args ...float64) chp.Signal {
+func (self *sender[ctype, dtype]) OfferToken(c ctype, d dtype, args ...float64) timing.Signal {
 	return self.Sender.Offer(Token[ctype, dtype]{c, d}, args...)
 }

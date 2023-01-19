@@ -3,53 +3,18 @@ package chp
 import (
 	"sync"
 	"fmt"
-	"errors"
 	"io"
 	"strconv"
 	"os"
 	"path/filepath"
 	"reflect"
+	
+	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
 )
-
-var Deadlock error = errors.New("Deadlock")
-var Conflict error = errors.New("Conflict")
 
 type Void struct {}
 
 var Null = Void{}
-
-type Action[vtype interface{}] struct {
-	T float64
-	V vtype
-}
-
-type Value[T interface{}] chan Action[T]
-
-func (p Value[T]) C() chan Action[T] {
-	return chan Action[T](p)
-}
-
-func (p Value[T]) Recv() (T, float64) {
-	a, ok := <-p
-	if !ok {
-		panic(Deadlock)
-	}
-	return a.V, a.T
-}
-
-type Signal chan float64
-
-func (p Signal) C() chan float64 {
-	return chan float64(p)
-}
-
-func (p Signal) Send() float64 {
-	a, ok := <-p
-	if !ok {
-		panic(Deadlock)
-	}
-	return a
-}
 
 type Recordable interface {
 	SetGlobals(g Globals)
@@ -59,25 +24,43 @@ type Sender[T interface{}] interface {
 	io.Closer
 	Recordable
 
-	Offer(value T, args ...float64) Signal
+	// args are optional timing parameters
+
+	// Non-blocking Send
+	Offer(value T, args ...float64) timing.Signal
+	
+	// Blocking Send
 	Send(value T, args ...float64) float64
-	Ready(args ...float64) Signal
+	
+	// Non-blocking Probe
+	Ready(args ...float64) timing.Signal
+
+	// Blocking Probe
 	Wait(args ...float64) float64
 }
 
 type Receiver[T interface{}] interface {
 	io.Closer
 	Recordable
+	
+	// args are optional timing parameters
 
-	Expect(args ...float64) Value[T]
+	// Non-blocking Receive
+	Expect(args ...float64) timing.Action[T]
+
+	// Blocking Receive
 	Recv(args ...float64) (T, float64)
-	Valid(args ...float64) Value[T]
+
+	// Non-blocking Probe
+	Valid(args ...float64) timing.Action[T]
+
+	// Blocking Probe
 	Probe(args ...float64) (T, float64)
 }
 
 func Recover[T interface{}](c chan T) {
 	r := recover()
-	if r == Deadlock {
+	if r == timing.Deadlock {
 		close(c)
 	} else if r != nil {
 		panic(r)
@@ -88,7 +71,7 @@ type channel[T interface{}] struct {
 	name string
 	read int
 	write int
-	buffer []Action[T]
+	buffer []timing.Value[T]
 	readyTime float64
 	ready bool
 	recvBlocked bool
@@ -181,7 +164,7 @@ type receiver[T interface{}] struct {
 func Chan[T interface{}](name string, slack int64) (Sender[T], Receiver[T]) {
 	c := &channel[T] {
 		name: name,
-		buffer: make([]Action[T], slack+1), 
+		buffer: make([]timing.Value[T], slack+1), 
 		sendMu: &sync.Mutex{},
 		recvMu: &sync.Mutex{},
 		cond: sync.NewCond(&sync.Mutex{}),
@@ -208,7 +191,7 @@ func ChanArr[T interface{}](name string, n int, slack int64) ([]Sender[T], []Rec
 	for i := 0; i < n; i++ {
 		c := &channel[T] {
 			name: name+"."+strconv.Itoa(i),
-			buffer: make([]Action[T], slack+1), 
+			buffer: make([]timing.Value[T], slack+1), 
 			sendMu: &sync.Mutex{},
 			recvMu: &sync.Mutex{},
 			cond: sync.NewCond(&sync.Mutex{}),
@@ -379,14 +362,14 @@ func (s *sender[T]) Send(value T, args ...float64) float64 {
 	}
 
 	if !s.c.BeginSend() {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 
-	s.c.buffer[s.c.write] = Action[T]{start, value}
+	s.c.buffer[s.c.write] = timing.Value[T]{start, value}
 	
 	t, ok := s.c.EndSend()
 	if !ok {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 
 	if s.log != nil {
@@ -400,8 +383,8 @@ func (s *sender[T]) Send(value T, args ...float64) float64 {
 	return t - s.g.Curr()
 }
 
-func (s *sender[T]) Offer(value T, args ...float64) Signal {
-	var send Signal = make(chan float64, 1)
+func (s *sender[T]) Offer(value T, args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
 		defer Recover(chan float64(send))
@@ -411,8 +394,8 @@ func (s *sender[T]) Offer(value T, args ...float64) Signal {
 	return send
 }
 
-func (s *sender[T]) Ready(args ...float64) Signal {
-	var send Signal = make(chan float64, 1)
+func (s *sender[T]) Ready(args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
 		defer Recover(send)
@@ -437,12 +420,12 @@ func (s *sender[T]) Wait(args ...float64) float64 {
 	}
 	
 	if !s.c.BeginSend() {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 	
 	t, ok := s.c.EndWait(start)
 	if !ok {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 
 	if s.g.Debug() && s.c.name != "" {
@@ -489,7 +472,7 @@ func (r *receiver[T]) Recv(args ...float64) (T, float64) {
 	}
 
 	if !r.c.BeginRecv() {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 	
 	result := r.c.buffer[r.c.read]
@@ -503,7 +486,7 @@ func (r *receiver[T]) Recv(args ...float64) (T, float64) {
 	r.logged = false
 
 	if !r.c.EndRecv(result.T) {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 
 	if r.g.Debug() && r.c.name != "" {
@@ -513,25 +496,25 @@ func (r *receiver[T]) Recv(args ...float64) (T, float64) {
 	return result.V, result.T - r.g.Curr()
 }
 
-func (r *receiver[T]) Expect(args ...float64) Value[T] {
-	var recv Value[T] = make(chan Action[T], 1)
+func (r *receiver[T]) Expect(args ...float64) timing.Action[T] {
+	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
-		defer Recover(chan Action[T](recv))
+		defer Recover(chan timing.Value[T](recv))
 		v, t := r.Recv(args...)
-		recv <- Action[T]{t, v}
+		recv <- timing.Value[T]{t, v}
 	}()
 
 	return recv
 }
 
-func (r *receiver[T]) Valid(args ...float64) Value[T] {
-	var recv Value[T] = make(chan Action[T], 1)
+func (r *receiver[T]) Valid(args ...float64) timing.Action[T] {
+	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
 		defer Recover(recv)
 		v, t := r.Probe(args...)
-		recv <- Action[T]{t, v}
+		recv <- timing.Value[T]{t, v}
 	}()
 
 	return recv
@@ -552,7 +535,7 @@ func (r *receiver[T]) Probe(args ...float64) (T, float64) {
 	}
 
 	if !r.c.BeginRecv() {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 
 	result := r.c.buffer[r.c.read]
@@ -566,7 +549,7 @@ func (r *receiver[T]) Probe(args ...float64) (T, float64) {
 	r.logged = true
 
 	if !r.c.EndProbe() {
-		panic(Deadlock)
+		panic(timing.Deadlock)
 	}
 
 	if r.g.Debug() && r.c.name != "" {

@@ -94,8 +94,8 @@ func (self *sender) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
 }
 
-func (self *sender) Offer(value int64, args ...float64) chp.Signal {
-	var send chp.Signal = make(chan float64, 1)
+func (self *sender) Offer(value int64, args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
 		defer chp.Recover(chan float64(send))
@@ -109,7 +109,7 @@ func (self *sender) Send(value int64, args ...float64) float64 {
 	return self.raw.SendStream(FromInt64(value, self.base), args...)
 }
 
-func (self *sender) Ready(args ...float64) chp.Signal {
+func (self *sender) Ready(args ...float64) timing.Signal {
 	return self.raw.Ready(args...)
 }
 
@@ -133,13 +133,13 @@ func (self *receiver) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
 }
 
-func (r *receiver) Expect(args ...float64) chp.Value[int64] {
-	var recv chp.Value[int64] = make(chan chp.Action[int64], 1)
+func (r *receiver) Expect(args ...float64) timing.Action[int64] {
+	var recv timing.Action[int64] = make(chan timing.Value[int64], 1)
 
 	go func() {
-		defer chp.Recover(chan chp.Action[int64](recv))
+		defer chp.Recover(chan timing.Value[int64](recv))
 		v, t := r.Recv(args...)
-		recv <- chp.Action[int64]{t, v}
+		recv <- timing.Value[int64]{t, v}
 	}()
 
 	return recv
@@ -151,15 +151,15 @@ func (self *receiver) Recv(args ...float64) (int64, float64) {
 }
 
 // Not supported by this receiver type, autopanic
-func (self *receiver) Valid(args ...float64) chp.Value[int64] {
-	var result chp.Value[int64] = make(chan chp.Action[int64], 1)
+func (self *receiver) Valid(args ...float64) timing.Action[int64] {
+	var result timing.Action[int64] = make(chan timing.Value[int64], 1)
 	close(result)
 	return result
 }
 
 // Not supported by this receiver type, autopanic
 func (self *receiver) Probe(args ...float64) (int64, float64) {
-	panic(chp.Deadlock)
+	panic(timing.Deadlock)
 	return 0, 0.0
 }
 
@@ -251,8 +251,8 @@ func (self *bigsender) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
 }
 
-func (self *bigsender) Offer(value *big.Int, args ...float64) chp.Signal {
-	var send chp.Signal = make(chan float64, 1)
+func (self *bigsender) Offer(value *big.Int, args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
 		defer chp.Recover(chan float64(send))
@@ -266,7 +266,7 @@ func (self *bigsender) Send(value *big.Int, args ...float64) float64 {
 	return self.raw.SendStream(FromBigInt(value, self.base), args...)
 }
 
-func (self *bigsender) Ready(args ...float64) chp.Signal {
+func (self *bigsender) Ready(args ...float64) timing.Signal {
 	return self.raw.Ready(args...)
 }
 
@@ -290,13 +290,13 @@ func (self *bigreceiver) SetGlobals(g chp.Globals) {
 	self.raw.SetGlobals(g)
 }
 
-func (r *bigreceiver) Expect(args ...float64) chp.Value[*big.Int] {
-	var recv chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
+func (r *bigreceiver) Expect(args ...float64) timing.Action[*big.Int] {
+	var recv timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 
 	go func() {
-		defer chp.Recover(chan chp.Action[*big.Int](recv))
+		defer chp.Recover(chan timing.Value[*big.Int](recv))
 		v, t := r.Recv(args...)
-		recv <- chp.Action[*big.Int]{t, v}
+		recv <- timing.Value[*big.Int]{t, v}
 	}()
 
 	return recv
@@ -308,15 +308,15 @@ func (self *bigreceiver) Recv(args ...float64) (*big.Int, float64) {
 }
 
 // Not supported by this bigreceiver type, autopanic
-func (self *bigreceiver) Valid(args ...float64) chp.Value[*big.Int] {
-	var result chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
+func (self *bigreceiver) Valid(args ...float64) timing.Action[*big.Int] {
+	var result timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 	close(result)
 	return result
 }
 
 // Not supported by this bigreceiver type, autopanic
 func (self *bigreceiver) Probe(args ...float64) (*big.Int, float64) {
-	panic(chp.Deadlock)
+	panic(timing.Deadlock)
 	return nil, 0.0
 }
 
@@ -377,8 +377,8 @@ func (self *parallelsender) SetGlobals(g chp.Globals) {
 	}
 }
 
-func (self *parallelsender) Offer(value int64, args ...float64) chp.Signal {
-	var send chp.Signal = make(chan float64, 1)
+func (self *parallelsender) Offer(value int64, args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
 		defer chp.Recover(chan float64(send))
@@ -392,7 +392,7 @@ func (self *parallelsender) Send(value int64, args ...float64) float64 {
 	digits := FromInt64(value, self.base)
 	g := &sync.WaitGroup{}
 
-	ts := timing.Set()
+	ts := timing.Max()
 	mu := &sync.Mutex{}
 	for i, digit := range digits {
 		if i < len(self.raw) {
@@ -402,7 +402,7 @@ func (self *parallelsender) Send(value int64, args ...float64) float64 {
 				t := c.SendToken(last, val, args...)
 				mu.Lock()
 				defer mu.Unlock()
-				ts.Max(t)
+				ts.Add(t)
 			}(g, self.raw[i], i == len(digits)-1, digit)
 		}
 	}
@@ -410,14 +410,14 @@ func (self *parallelsender) Send(value int64, args ...float64) float64 {
 	return ts.Get()
 }
 
-func (self *parallelsender) Ready(args ...float64) chp.Signal {
-	var result chp.Signal = make(chan float64, 1)
+func (self *parallelsender) Ready(args ...float64) timing.Signal {
+	var result timing.Signal = make(chan float64, 1)
 	close(result)
 	return result
 }
 
 func (self *parallelsender) Wait(args ...float64) float64 {
-	panic(chp.Deadlock)
+	panic(timing.Deadlock)
 	return 0.0
 }
 
@@ -445,13 +445,13 @@ func (self *parallelreceiver) SetGlobals(g chp.Globals) {
 	}
 }
 
-func (r *parallelreceiver) Expect(args ...float64) chp.Value[int64] {
-	var recv chp.Value[int64] = make(chan chp.Action[int64], 1)
+func (r *parallelreceiver) Expect(args ...float64) timing.Action[int64] {
+	var recv timing.Action[int64] = make(chan timing.Value[int64], 1)
 
 	go func() {
-		defer chp.Recover(chan chp.Action[int64](recv))
+		defer chp.Recover(chan timing.Value[int64](recv))
 		v, t := r.Recv(args...)
-		recv <- chp.Action[int64]{t, v}
+		recv <- timing.Value[int64]{t, v}
 	}()
 
 	return recv
@@ -482,15 +482,15 @@ func (self *parallelreceiver) Recv(args ...float64) (int64, float64) {
 }
 
 // Not supported by this parallelreceiver type, autopanic
-func (self *parallelreceiver) Valid(args ...float64) chp.Value[int64] {
-	var result chp.Value[int64] = make(chan chp.Action[int64], 1)
+func (self *parallelreceiver) Valid(args ...float64) timing.Action[int64] {
+	var result timing.Action[int64] = make(chan timing.Value[int64], 1)
 	close(result)
 	return result
 }
 
 // Not supported by this parallelreceiver type, autopanic
 func (self *parallelreceiver) Probe(args ...float64) (int64, float64) {
-	panic(chp.Deadlock)
+	panic(timing.Deadlock)
 	return 0, 0.0
 }
 
@@ -557,8 +557,8 @@ func (self *bigparallelsender) SetGlobals(g chp.Globals) {
 	}
 }
 
-func (self *bigparallelsender) Offer(value *big.Int, args ...float64) chp.Signal {
-	var send chp.Signal = make(chan float64, 1)
+func (self *bigparallelsender) Offer(value *big.Int, args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
 		defer chp.Recover(chan float64(send))
@@ -572,7 +572,7 @@ func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 	digits := FromBigInt(value, self.base)
 	g := &sync.WaitGroup{}
 
-	ts := timing.Set()
+	ts := timing.Max()
 	mu := &sync.Mutex{}
 	for i, digit := range digits {
 		if i < len(self.raw) {
@@ -582,7 +582,7 @@ func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 				t := c.SendToken(last, val, args...)
 				mu.Lock()
 				defer mu.Unlock()
-				ts.Max(t)
+				ts.Add(t)
 			}(g, self.raw[i], i == len(digits)-1, digit)
 		}
 	}
@@ -590,14 +590,14 @@ func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 	return ts.Get()
 }
 
-func (self *bigparallelsender) Ready(args ...float64) chp.Signal {
-	var result chp.Signal = make(chan float64, 1)
+func (self *bigparallelsender) Ready(args ...float64) timing.Signal {
+	var result timing.Signal = make(chan float64, 1)
 	close(result)
 	return result
 }
 
 func (self *bigparallelsender) Wait(args ...float64) float64 {
-	panic(chp.Deadlock)
+	panic(timing.Deadlock)
 	return 0.0
 }
 
@@ -625,13 +625,13 @@ func (self *bigparallelreceiver) SetGlobals(g chp.Globals) {
 	}
 }
 
-func (r *bigparallelreceiver) Expect(args ...float64) chp.Value[*big.Int] {
-	var recv chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
+func (r *bigparallelreceiver) Expect(args ...float64) timing.Action[*big.Int] {
+	var recv timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 
 	go func() {
-		defer chp.Recover(chan chp.Action[*big.Int](recv))
+		defer chp.Recover(chan timing.Value[*big.Int](recv))
 		v, t := r.Recv(args...)
-		recv <- chp.Action[*big.Int]{t, v}
+		recv <- timing.Value[*big.Int]{t, v}
 	}()
 
 	return recv
@@ -662,15 +662,15 @@ func (self *bigparallelreceiver) Recv(args ...float64) (*big.Int, float64) {
 }
 
 // Not supported by this channel type, autopanic
-func (self *bigparallelreceiver) Valid(args ...float64) chp.Value[*big.Int] {
-	var result chp.Value[*big.Int] = make(chan chp.Action[*big.Int], 1)
+func (self *bigparallelreceiver) Valid(args ...float64) timing.Action[*big.Int] {
+	var result timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 	close(result)
 	return result
 }
 
 // Not supported by this channel type, autopanic
 func (self *bigparallelreceiver) Probe(args ...float64) (*big.Int, float64) {
-	panic(chp.Deadlock)
+	panic(timing.Deadlock)
 	return nil, 0.0
 }
 

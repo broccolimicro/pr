@@ -151,7 +151,7 @@ func (g *globals) Done() {
 		g.wg.Wait()
 	}
 
-	if r := recover(); r != nil && r != Deadlock {
+	if r := recover(); r != nil && r != timing.Deadlock {
 		panic(r)
 	}
 	for _, port := range g.ports {

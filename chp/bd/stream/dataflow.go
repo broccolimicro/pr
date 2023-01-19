@@ -33,9 +33,9 @@ func Copy[T interface{}](g chp.Globals, L Receiver[T], R []Sender[T]) {
 
 	for {
 		x, tl := L.Recv()
-		tr := timing.Set()
+		tr := timing.Max()
 		for _, r := range R {
-			tr.Max(r.Send(x, tl+d0R))
+			tr.Add(r.Send(x, tl+d0R))
 		}
 		g.Cycle(e0, tl, tr.Get()+d0)
 	}
