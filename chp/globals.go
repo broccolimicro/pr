@@ -196,6 +196,7 @@ func (g *globals) Cycle(fJ, start, end float64) {
 		if err != nil {
 			fmt.Println(err)
 		}
+		fmt.Fprintf(g.log, "Start\tEnd\tEnergy (fJ)\n")
 	}
 
 	if g.log != nil {
