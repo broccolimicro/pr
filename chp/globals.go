@@ -1,6 +1,8 @@
 package chp
 
+
 import (
+	"errors"
 	"sync"
 	"fmt"
 	"reflect"
@@ -11,6 +13,8 @@ import (
 
 	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
 )
+
+var Misconfigured = errors.New("Misconfigured")
 
 type Globals interface {
 	Sub(name string, args ...any) Globals
@@ -49,6 +53,8 @@ type globals struct {
 	dir string
 
 	debug bool
+
+	init bool
 }
 
 func New(args ...string) (Globals, error) {
@@ -114,6 +120,11 @@ func caller(skipFrames int) string {
 }
 
 func (g *globals) Init(args ...interface{}) timing.Profile {
+	if g.init {
+		panic(Misconfigured)
+	}
+	g.init = true
+
 	g.ports = args
 	for _, port := range g.ports {
 		if port != nil {
