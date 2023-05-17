@@ -56,7 +56,7 @@ type set struct {
 	op int
 }
 
-func Min(args ...float64) TimingSet {
+func Min(args ...interface{}) TimingSet {
 	result := &set{
 		op: MIN,
 	}
@@ -67,7 +67,7 @@ func Min(args ...float64) TimingSet {
 	return result
 }
 
-func Max(args ...float64) TimingSet {
+func Max(args ...interface{}) TimingSet {
 	result := &set{
 		op: MAX,
 	}
@@ -78,7 +78,7 @@ func Max(args ...float64) TimingSet {
 	return result
 }
 
-func Avg(args ...float64) TimingSet {
+func Avg(args ...interface{}) TimingSet {
 	result := &set{
 		op: AVG,
 	}

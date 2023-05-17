@@ -2,7 +2,6 @@ package lsbf
 
 import (
 	"math/big"
-	"sync"
 
 	"git.broccolimicro.io/Broccoli/pr.git/chp"
 	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
@@ -560,23 +559,13 @@ func (self *bigparallelsender) Offer(value *big.Int, args ...float64) timing.Sig
 
 func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 	digits := FromBigInt(value, self.base)
-	g := &sync.WaitGroup{}
 
 	ts := timing.Max()
-	mu := &sync.Mutex{}
 	for i, digit := range digits {
 		if i < len(self.raw) {
-			g.Add(1)
-			go func(g *sync.WaitGroup, c stream.Sender[int64], last bool, val int64) {
-				defer g.Done()
-				t := c.SendToken(last, val, args...)
-				mu.Lock()
-				defer mu.Unlock()
-				ts.Add(t)
-			}(g, self.raw[i], i == len(digits)-1, digit)
+			ts.Add(self.raw[i].OfferToken(i == len(digits)-1, digit, args...))
 		}
 	}
-	g.Wait()
 	return ts.Get()
 }
 
