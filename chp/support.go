@@ -6,6 +6,12 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func RandomBool() func(i int64) bool {
+	return func(i int64) bool {
+		return rand.Intn(2) == 1
+	}
+}
+
 func RandomInt(lower, upper int) func(i int64) int {
 	return func(i int64) int {
 		low := lower
