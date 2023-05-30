@@ -59,8 +59,13 @@ type Receiver[T interface{}] interface {
 }
 
 type Bus[T interface{}] struct {
-	Receiver[T] R
-	Sender[T] S
+	R Receiver[T]
+	S Sender[T]
+}
+
+func (b Bus[T]) SetGlobals(g Globals) {
+	b.S.SetGlobals(g)
+	b.R.SetGlobals(g)
 }
 
 func Recover[T interface{}](c chan T) {
