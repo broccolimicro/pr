@@ -6,6 +6,24 @@ import (
 	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
 )
 
+func Connect[T interface{}](g Globals, L Receiver[T], R Sender[T]) {
+	p := g.Init(L, R)
+	defer g.Done()
+
+	d0L := p.Find("d0L")
+	d0R := p.Find("d0R")
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")
+
+	for {
+		t0 := R.Wait()
+		x, tl := L.Recv(t0, d0L)
+		tr := R.Send(x, tl+d0R)
+
+		g.Cycle(e0, tl, tr+d0)
+	}
+}
+
 func Buffer[T interface{}](g Globals, L Receiver[T], R Sender[T]) {
 	p := g.Init(L, R)
 	defer g.Done()

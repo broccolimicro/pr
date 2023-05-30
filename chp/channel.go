@@ -341,6 +341,9 @@ func (c *channel[T]) EndProbe() bool {
 }
 
 func (s *sender[T]) SetGlobals(g Globals) {
+	if s.g != nil {
+		panic(Misconfigured)
+	}
 	s.g = g
 	if s.c.name != "" {
 		s.log = Log[T](filepath.Join(g.Dir(), g.Name()+"."+s.c.name+".s"))
@@ -451,6 +454,9 @@ func (s *sender[T]) Close() error {
 }
 
 func (r *receiver[T]) SetGlobals(g Globals) {
+	if r.g != nil {
+		panic(Misconfigured)
+	}
 	r.g = g
 	if r.c.name != "" {
 		r.log = Log[T](filepath.Join(g.Dir(), g.Name()+"."+r.c.name+".r"))

@@ -7,6 +7,25 @@ import (
 	"git.broccolimicro.io/Broccoli/pr.git/chp/param"
 )
 
+func TestIntegrationConnect(t *testing.T) {
+	profile := param.String(1, "example.prof")
+	out := param.String(2, "test/chp/buffer")
+	min := param.Int64(3, int64(0))
+	max := param.Int64(4, int64(2))
+
+	g, err := New(out, profile)
+	assert.NoError(t, err)
+	defer g.Done()
+	
+	Ls, Lr := Chan[int64]("L", 0)
+	Vs, Vr := Chan[int64]("V", 2)
+	Rs, Rr := Chan[int64]("R", 0)
+
+	go SourceN(100, RandomInt64(min, max), g.Sub("src"), Ls, Vs)
+	go SinkAndCheck(AreEqual[int64], g.Sub("sink"), Vr, Rr)
+	go Connect(g.Sub("dut"), Lr, Rs)
+}
+
 func TestIntegrationBuffer(t *testing.T) {
 	profile := param.String(1, "example.prof")
 	out := param.String(2, "test/chp/buffer")
