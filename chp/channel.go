@@ -58,6 +58,11 @@ type Receiver[T interface{}] interface {
 	Probe(args ...float64) (T, float64)
 }
 
+type Bus[T interface{}] struct {
+	Receiver[T] R
+	Sender[T] S
+}
+
 func Recover[T interface{}](c chan T) {
 	r := recover()
 	if r == timing.Deadlock {
