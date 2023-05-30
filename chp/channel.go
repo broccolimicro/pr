@@ -68,6 +68,20 @@ func (b Bus[T]) SetGlobals(g Globals) {
 	b.R.SetGlobals(g)
 }
 
+func Senders[T interface{}](b []Bus[T]) (s []Sender[T]) {
+	for _, bi := range b {
+		s = append(s, bi.S)
+	}
+	return
+}
+
+func Receivers[T interface{}](b []Bus[T]) (r []Receiver[T]) {
+	for _, bi := range b {
+		r = append(r, bi.R)
+	}
+	return
+}
+
 func Recover[T interface{}](c chan T) {
 	r := recover()
 	if r == timing.Deadlock {
