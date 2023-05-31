@@ -68,16 +68,20 @@ func (b Channel[T]) SetGlobals(g Globals) {
 	b.R.SetGlobals(g)
 }
 
-func Senders[T interface{}](b []Channel[T]) (s []Sender[T]) {
-	for _, bi := range b {
-		s = append(s, bi.S)
+func Senders[T interface{}](B ...[]Channel[T]) (s []Sender[T]) {
+	for _, b := range B {
+		for _, bi := range b {
+			s = append(s, bi.S)
+		}
 	}
 	return
 }
 
-func Receivers[T interface{}](b []Channel[T]) (r []Receiver[T]) {
-	for _, bi := range b {
-		r = append(r, bi.R)
+func Receivers[T interface{}](B ...[]Channel[T]) (r []Receiver[T]) {
+	for _, b := range B {
+		for _, bi := range b {
+			r = append(r, bi.R)
+		}
 	}
 	return
 }
