@@ -58,24 +58,24 @@ type Receiver[T interface{}] interface {
 	Probe(args ...float64) (T, float64)
 }
 
-type Bus[T interface{}] struct {
-	R Receiver[T]
+type Channel[T interface{}] struct {
 	S Sender[T]
+	R Receiver[T]
 }
 
-func (b Bus[T]) SetGlobals(g Globals) {
+func (b Channel[T]) SetGlobals(g Globals) {
 	b.S.SetGlobals(g)
 	b.R.SetGlobals(g)
 }
 
-func Senders[T interface{}](b []Bus[T]) (s []Sender[T]) {
+func Senders[T interface{}](b []Channel[T]) (s []Sender[T]) {
 	for _, bi := range b {
 		s = append(s, bi.S)
 	}
 	return
 }
 
-func Receivers[T interface{}](b []Bus[T]) (r []Receiver[T]) {
+func Receivers[T interface{}](b []Channel[T]) (r []Receiver[T]) {
 	for _, bi := range b {
 		r = append(r, bi.R)
 	}
@@ -236,6 +236,58 @@ func ChanArr[T interface{}](name string, n int, slack int64) ([]Sender[T], []Rec
 
 	return s, r
 }
+
+func Bus[T interface{}](name string, slack int64) Channel[T] {
+	c := &channel[T] {
+		name: name,
+		buffer: make([]timing.Value[T], slack+1), 
+		sendMu: &sync.Mutex{},
+		recvMu: &sync.Mutex{},
+		cond: sync.NewCond(&sync.Mutex{}),
+	}
+	
+	s := &sender[T]{
+		c: c,
+		g: nil,
+		log: nil,
+	}
+	r := &receiver[T]{
+		c: c,
+		g: nil,
+		log: nil,
+		logged: false,
+	}
+	return Channel[T]{s, r}
+}
+
+func BusArr[T interface{}](name string, n int, slack int64) []Channel[T] {
+	t := make([]Channel[T], n)
+	
+	for i := 0; i < n; i++ {
+		c := &channel[T] {
+			name: name+"."+strconv.Itoa(i),
+			buffer: make([]timing.Value[T], slack+1), 
+			sendMu: &sync.Mutex{},
+			recvMu: &sync.Mutex{},
+			cond: sync.NewCond(&sync.Mutex{}),
+		}
+
+		t[i].S = &sender[T]{
+			c: c,
+			g: nil,
+			log: nil,
+		}
+		t[i].R = &receiver[T]{
+			c: c,
+			g: nil,
+			log: nil,
+			logged: false,
+		}
+	}
+
+	return t
+}
+
 
 func (c *channel[T]) full() bool {
 	return c.write == c.read && c.ready
