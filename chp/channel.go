@@ -68,19 +68,51 @@ func (b Channel[T]) SetGlobals(g Globals) {
 	b.R.SetGlobals(g)
 }
 
-func Senders[T interface{}](B ...[]Channel[T]) (s []Sender[T]) {
+func Senders[T interface{}](B ...interface{}) (s []Sender[T]) {
 	for _, b := range B {
-		for _, bi := range b {
+		if bi, ok := b.(Channel[T]); ok {
 			s = append(s, bi.S)
+		} else if bi, ok := b.(Sender[T]); ok {
+			s = append(s, bi)
+		} else if reflect.TypeOf(b).Kind() == reflect.Slice || reflect.TypeOf(b).Kind() == reflect.Array {
+			items := reflect.ValueOf(b)
+			for i := 0; i < items.Len(); i++ {
+				item := items.Index(i).Interface()
+				if bi, ok := item.(Channel[T]); ok {
+					s = append(s, bi.S)
+				} else if bi, ok := item.(Sender[T]); ok {
+					s = append(s, bi)
+				} else {
+					panic(Misconfigured)
+				}
+			}
+		} else {
+			panic(Misconfigured)
 		}
 	}
 	return
 }
 
-func Receivers[T interface{}](B ...[]Channel[T]) (r []Receiver[T]) {
+func Receivers[T interface{}](B ...interface{}) (r []Receiver[T]) {
 	for _, b := range B {
-		for _, bi := range b {
+		if bi, ok := b.(Channel[T]); ok {
 			r = append(r, bi.R)
+		} else if bi, ok := b.(Receiver[T]); ok {
+			r = append(r, bi)
+		} else if reflect.TypeOf(b).Kind() == reflect.Slice || reflect.TypeOf(b).Kind() == reflect.Array {
+			items := reflect.ValueOf(b)
+			for i := 0; i < items.Len(); i++ {
+				item := items.Index(i).Interface()
+				if bi, ok := item.(Channel[T]); ok {
+					r = append(r, bi.R)
+				} else if bi, ok := item.(Receiver[T]); ok {
+					r = append(r, bi)
+				} else {
+					panic(Misconfigured)
+				}
+			}
+		} else {
+			panic(Misconfigured)
 		}
 	}
 	return
