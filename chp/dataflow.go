@@ -2,6 +2,8 @@ package chp
 
 import (
 	"errors"
+	"math/rand"
+	"time"
 
 	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
 )
@@ -204,6 +206,130 @@ func SinkAndCheckN[T interface{}](n int64, valid func(token int64, values []T) e
 	var tl float64
 	values := make([]T, len(L))
 	for i := int64(0); i < n; i++ {
+		t := timing.Max()
+		for j := 0; j < len(L); j++ {
+			values[j], tl = L[j].Recv()
+			t.Add(tl)
+		}
+		err := valid(i, values)
+		if err != nil {
+			panic(err)
+		}
+		g.Cycle(e0, t.Get(), t.Get()+d0)
+	}
+}
+
+func SourceRandDelay[T interface{}](fn func(i int64) T, g Globals, R ...Sender[T]) {
+	p := g.Init(R)
+	defer g.Done()
+
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")*float64(len(R))
+
+	for i := int64(0); ; i++ {
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Microsecond)
+
+		value := fn(i)
+		t := timing.Max()
+		for j := 0; j < len(R); j++ {
+			t.Add(R[j].Send(value))
+		}
+		g.Cycle(e0, t.Get(), t.Get()+d0)
+	}
+}
+
+func SourceNRandDelay[T interface{}](n int64, fn func(i int64) T, g Globals, R ...Sender[T]) {
+	p := g.Init(R)
+	defer g.Done()
+
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")*float64(len(R))
+
+	for i := int64(0); i < n; i++ {
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Microsecond)
+
+		value := fn(i)
+		t := timing.Max()
+		for j := 0; j < len(R); j++ {
+			t.Add(R[j].Send(value))
+		}
+		g.Cycle(e0, t.Get(), t.Get()+d0)
+	}
+}
+
+func SinkRandDelay[T interface{}](g Globals, L Receiver[T]) {
+	p := g.Init(L)
+	defer g.Done()
+
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")
+
+	for {
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Microsecond)
+
+		_, tl := L.Recv()
+		g.Cycle(e0, tl, tl+d0)
+	}
+}
+
+func SinkNRandDelay[T interface{}](n int64, g Globals, L Receiver[T]) {
+	p := g.Init(L)
+	defer g.Done()
+
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")
+
+	for i := int64(0); i < n; i++ {
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Microsecond)
+
+		_, tl := L.Recv()
+		g.Cycle(e0, tl, tl+d0)
+	}
+}
+
+func SinkAndCheckRandDelay[T interface{}](valid func(token int64, values []T) error, g Globals, L ...Receiver[T]) {
+	p := g.Init(L)
+	defer g.Done()
+
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")
+
+	var tl float64
+	values := make([]T, len(L))
+	for i := int64(0); ; i++ {
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Microsecond)
+
+		t := timing.Max()
+		for j := 0; j < len(L); j++ {
+			values[j], tl = L[j].Recv()
+			t.Add(tl)
+		}
+		err := valid(i, values)
+		if err != nil {
+			panic(err)
+		}
+		g.Cycle(e0, t.Get(), t.Get()+d0)
+	}
+}
+
+func SinkAndCheckNRandDelay[T interface{}](n int64, valid func(token int64, values []T) error, g Globals, L ...Receiver[T]) {
+	p := g.Init(L)
+	defer g.Done()
+
+	d0 := p.Find("d0")
+	e0 := p.Find("e0")
+
+	var tl float64
+	values := make([]T, len(L))
+	for i := int64(0); i < n; i++ {
+		r := rand.Intn(1000)
+		time.Sleep(time.Duration(r) * time.Microsecond)
+
 		t := timing.Max()
 		for j := 0; j < len(L); j++ {
 			values[j], tl = L[j].Recv()
