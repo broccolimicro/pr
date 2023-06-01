@@ -458,7 +458,7 @@ func (c *channel[T]) Ready() bool {
 	c.cond.L.Lock()
 	defer c.cond.L.Unlock()
 
-	return !c.full()
+	return (c.write+1)%len(c.buffer) != c.read
 }
 
 func (c *channel[T]) Valid() bool {
