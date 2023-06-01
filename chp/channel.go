@@ -33,7 +33,8 @@ type Sender[T interface{}] interface {
 	Send(value T, args ...float64) float64
 	
 	// Non-blocking Probe
-	Ready(args ...float64) timing.Signal
+	Watch(args ...float64) timing.Signal
+	Ready() bool
 
 	// Blocking Probe
 	Wait(args ...float64) float64
@@ -52,7 +53,8 @@ type Receiver[T interface{}] interface {
 	Recv(args ...float64) (T, float64)
 
 	// Non-blocking Probe
-	Valid(args ...float64) timing.Action[T]
+	Read(args ...float64) timing.Action[T]
+	Valid() bool
 
 	// Blocking Probe
 	Probe(args ...float64) (T, float64)
@@ -452,6 +454,20 @@ func (c *channel[T]) EndProbe() bool {
 	return !c.recvDead()
 }
 
+func (c *channel[T]) Ready() bool {
+	c.cond.L.Lock()
+	defer c.cond.L.Unlock()
+
+	return !c.full()
+}
+
+func (c *channel[T]) Valid() bool {
+	c.cond.L.Lock()
+	defer c.cond.L.Unlock()
+
+	return !c.empty()
+}
+
 func (s *sender[T]) SetGlobals(g Globals) {
 	if s.g != nil {
 		panic(Misconfigured)
@@ -509,7 +525,7 @@ func (s *sender[T]) Offer(value T, args ...float64) timing.Signal {
 	return send
 }
 
-func (s *sender[T]) Ready(args ...float64) timing.Signal {
+func (s *sender[T]) Watch(args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
@@ -518,6 +534,23 @@ func (s *sender[T]) Ready(args ...float64) timing.Signal {
 	}()
 
 	return send
+}
+
+func (s *sender[T]) Ready() bool {
+	if s.g == nil {
+		panic(fmt.Errorf("you must call g.Init for this sender"))
+	}
+
+	rdy := s.c.Ready()
+	if s.g.Debug() && s.c.name != "" {
+		if rdy {
+			fmt.Printf("%f ns\t\t#%s!\t\t%s\n", s.g.Curr(), s.c.name, s.g.Name())
+		} else {
+			fmt.Printf("%f ns\t\t~#%s!\t\t%s\n", s.g.Curr(), s.c.name, s.g.Name())
+		}
+	}
+
+	return rdy
 }
 
 func (s *sender[T]) Wait(args ...float64) float64 {
@@ -626,7 +659,7 @@ func (r *receiver[T]) Expect(args ...float64) timing.Action[T] {
 	return recv
 }
 
-func (r *receiver[T]) Valid(args ...float64) timing.Action[T] {
+func (r *receiver[T]) Read(args ...float64) timing.Action[T] {
 	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
@@ -636,6 +669,23 @@ func (r *receiver[T]) Valid(args ...float64) timing.Action[T] {
 	}()
 
 	return recv
+}
+
+func (r *receiver[T]) Valid() bool {
+	if r.g == nil {
+		panic(fmt.Errorf("you must call g.Init for this receiver"))
+	}
+
+	val := r.c.Valid()
+	if r.g.Debug() && r.c.name != "" {
+		if val {
+			fmt.Printf("%f ns\t\t#%s?\t\t%s\n", r.g.Curr(), r.c.name, r.g.Name())
+		} else {
+			fmt.Printf("%f ns\t\t~#%s?\t\t%s\n", r.g.Curr(), r.c.name, r.g.Name())
+		}
+	}
+
+	return val
 }
 
 func (r *receiver[T]) Probe(args ...float64) (T, float64) {

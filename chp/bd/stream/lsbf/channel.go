@@ -108,8 +108,12 @@ func (self *sender) Send(value int64, args ...float64) float64 {
 	return self.raw.SendStream(FromInt64(value, self.base), args...)
 }
 
-func (self *sender) Ready(args ...float64) timing.Signal {
-	return self.raw.Ready(args...)
+func (self *sender) Watch(args ...float64) timing.Signal {
+	return self.raw.Watch(args...)
+}
+
+func (self *sender) Ready() bool {
+	return self.raw.Ready()
 }
 
 func (self *sender) Wait(args ...float64) float64 {
@@ -150,10 +154,16 @@ func (self *receiver) Recv(args ...float64) (int64, float64) {
 }
 
 // Not supported by this receiver type, autopanic
-func (self *receiver) Valid(args ...float64) timing.Action[int64] {
+func (self *receiver) Read(args ...float64) timing.Action[int64] {
 	var result timing.Action[int64] = make(chan timing.Value[int64], 1)
 	close(result)
 	return result
+}
+
+// Not supported by this receiver type, autopanic
+func (self *receiver) Valid() bool {
+	panic(timing.Deadlock)
+	return false
 }
 
 // Not supported by this receiver type, autopanic
@@ -265,8 +275,12 @@ func (self *bigsender) Send(value *big.Int, args ...float64) float64 {
 	return self.raw.SendStream(FromBigInt(value, self.base), args...)
 }
 
-func (self *bigsender) Ready(args ...float64) timing.Signal {
-	return self.raw.Ready(args...)
+func (self *bigsender) Watch(args ...float64) timing.Signal {
+	return self.raw.Watch(args...)
+}
+
+func (self *bigsender) Ready() bool {
+	return self.raw.Ready()
 }
 
 func (self *bigsender) Wait(args ...float64) float64 {
@@ -307,10 +321,16 @@ func (self *bigreceiver) Recv(args ...float64) (*big.Int, float64) {
 }
 
 // Not supported by this bigreceiver type, autopanic
-func (self *bigreceiver) Valid(args ...float64) timing.Action[*big.Int] {
+func (self *bigreceiver) Read(args ...float64) timing.Action[*big.Int] {
 	var result timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 	close(result)
 	return result
+}
+
+// Not supported by this bigreceiver type, autopanic
+func (self *bigreceiver) Valid() bool {
+	panic(timing.Deadlock)
+	return false
 }
 
 // Not supported by this bigreceiver type, autopanic
@@ -399,10 +419,15 @@ func (self *parallelsender) Send(value int64, args ...float64) float64 {
 	return ts.Get()
 }
 
-func (self *parallelsender) Ready(args ...float64) timing.Signal {
+func (self *parallelsender) Watch(args ...float64) timing.Signal {
 	var result timing.Signal = make(chan float64, 1)
 	close(result)
 	return result
+}
+
+func (self *parallelsender) Ready() bool {
+	panic(timing.Deadlock)
+	return false
 }
 
 func (self *parallelsender) Wait(args ...float64) float64 {
@@ -471,10 +496,16 @@ func (self *parallelreceiver) Recv(args ...float64) (int64, float64) {
 }
 
 // Not supported by this parallelreceiver type, autopanic
-func (self *parallelreceiver) Valid(args ...float64) timing.Action[int64] {
+func (self *parallelreceiver) Read(args ...float64) timing.Action[int64] {
 	var result timing.Action[int64] = make(chan timing.Value[int64], 1)
 	close(result)
 	return result
+}
+
+// Not supported by this parallelreceiver type, autopanic
+func (self *parallelreceiver) Valid() bool {
+	panic(timing.Deadlock)
+	return false
 }
 
 // Not supported by this parallelreceiver type, autopanic
@@ -569,10 +600,15 @@ func (self *bigparallelsender) Send(value *big.Int, args ...float64) float64 {
 	return ts.Get()
 }
 
-func (self *bigparallelsender) Ready(args ...float64) timing.Signal {
+func (self *bigparallelsender) Watch(args ...float64) timing.Signal {
 	var result timing.Signal = make(chan float64, 1)
 	close(result)
 	return result
+}
+
+func (self *bigparallelsender) Ready() bool {
+	panic(timing.Deadlock)
+	return false
 }
 
 func (self *bigparallelsender) Wait(args ...float64) float64 {
@@ -641,10 +677,16 @@ func (self *bigparallelreceiver) Recv(args ...float64) (*big.Int, float64) {
 }
 
 // Not supported by this channel type, autopanic
-func (self *bigparallelreceiver) Valid(args ...float64) timing.Action[*big.Int] {
+func (self *bigparallelreceiver) Read(args ...float64) timing.Action[*big.Int] {
 	var result timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 	close(result)
 	return result
+}
+
+// Not supported by this channel type, autopanic
+func (self *bigparallelreceiver) Valid() bool {
+	panic(timing.Deadlock)
+	return false
 }
 
 // Not supported by this channel type, autopanic
