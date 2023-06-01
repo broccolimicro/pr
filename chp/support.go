@@ -75,4 +75,13 @@ func AreEqual[T interface{}](token int64, values []T) error {
 	return nil
 }
 
+// Thank golang's idiomatic stubbornness for this insanity
+func Flags8(bit ...bool) (f uint8) {
+	for i, b := range bit {
+		if b {
+			f |= (1<<i)
+		}
+	}
+	return
+}
 
