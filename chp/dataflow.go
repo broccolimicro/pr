@@ -219,7 +219,7 @@ func SinkAndCheckN[T interface{}](n int64, valid func(token int64, values []T) e
 	}
 }
 
-func SourceRandDelay[T interface{}](fn func(i int64) T, g Globals, R ...Sender[T]) {
+func SourceRandDelay[T interface{}](fn func(i int64) T, usec int64, g Globals, R ...Sender[T]) {
 	p := g.Init(R)
 	defer g.Done()
 
@@ -227,7 +227,7 @@ func SourceRandDelay[T interface{}](fn func(i int64) T, g Globals, R ...Sender[T
 	e0 := p.Find("e0")*float64(len(R))
 
 	for i := int64(0); ; i++ {
-		r := rand.Intn(1000)
+		r := rand.Int63n(usec)
 		time.Sleep(time.Duration(r) * time.Microsecond)
 
 		value := fn(i)
@@ -239,7 +239,7 @@ func SourceRandDelay[T interface{}](fn func(i int64) T, g Globals, R ...Sender[T
 	}
 }
 
-func SourceNRandDelay[T interface{}](n int64, fn func(i int64) T, g Globals, R ...Sender[T]) {
+func SourceNRandDelay[T interface{}](n int64, fn func(i int64) T, usec int64, g Globals, R ...Sender[T]) {
 	p := g.Init(R)
 	defer g.Done()
 
@@ -247,7 +247,7 @@ func SourceNRandDelay[T interface{}](n int64, fn func(i int64) T, g Globals, R .
 	e0 := p.Find("e0")*float64(len(R))
 
 	for i := int64(0); i < n; i++ {
-		r := rand.Intn(1000)
+		r := rand.Int63n(usec)
 		time.Sleep(time.Duration(r) * time.Microsecond)
 
 		value := fn(i)
@@ -259,7 +259,7 @@ func SourceNRandDelay[T interface{}](n int64, fn func(i int64) T, g Globals, R .
 	}
 }
 
-func SinkRandDelay[T interface{}](g Globals, L Receiver[T]) {
+func SinkRandDelay[T interface{}](usec int64, g Globals, L Receiver[T]) {
 	p := g.Init(L)
 	defer g.Done()
 
@@ -267,7 +267,7 @@ func SinkRandDelay[T interface{}](g Globals, L Receiver[T]) {
 	e0 := p.Find("e0")
 
 	for {
-		r := rand.Intn(1000)
+		r := rand.Int63n(usec)
 		time.Sleep(time.Duration(r) * time.Microsecond)
 
 		_, tl := L.Recv()
@@ -275,7 +275,7 @@ func SinkRandDelay[T interface{}](g Globals, L Receiver[T]) {
 	}
 }
 
-func SinkNRandDelay[T interface{}](n int64, g Globals, L Receiver[T]) {
+func SinkNRandDelay[T interface{}](n int64, usec int64, g Globals, L Receiver[T]) {
 	p := g.Init(L)
 	defer g.Done()
 
@@ -283,7 +283,7 @@ func SinkNRandDelay[T interface{}](n int64, g Globals, L Receiver[T]) {
 	e0 := p.Find("e0")
 
 	for i := int64(0); i < n; i++ {
-		r := rand.Intn(1000)
+		r := rand.Int63n(usec)
 		time.Sleep(time.Duration(r) * time.Microsecond)
 
 		_, tl := L.Recv()
@@ -291,7 +291,7 @@ func SinkNRandDelay[T interface{}](n int64, g Globals, L Receiver[T]) {
 	}
 }
 
-func SinkAndCheckRandDelay[T interface{}](valid func(token int64, values []T) error, g Globals, L ...Receiver[T]) {
+func SinkAndCheckRandDelay[T interface{}](valid func(token int64, values []T) error, usec int64, g Globals, L ...Receiver[T]) {
 	p := g.Init(L)
 	defer g.Done()
 
@@ -301,7 +301,7 @@ func SinkAndCheckRandDelay[T interface{}](valid func(token int64, values []T) er
 	var tl float64
 	values := make([]T, len(L))
 	for i := int64(0); ; i++ {
-		r := rand.Intn(1000)
+		r := rand.Int63n(usec)
 		time.Sleep(time.Duration(r) * time.Microsecond)
 
 		t := timing.Max()
@@ -317,7 +317,7 @@ func SinkAndCheckRandDelay[T interface{}](valid func(token int64, values []T) er
 	}
 }
 
-func SinkAndCheckNRandDelay[T interface{}](n int64, valid func(token int64, values []T) error, g Globals, L ...Receiver[T]) {
+func SinkAndCheckNRandDelay[T interface{}](n int64, valid func(token int64, values []T) error, usec int64, g Globals, L ...Receiver[T]) {
 	p := g.Init(L)
 	defer g.Done()
 
@@ -327,7 +327,7 @@ func SinkAndCheckNRandDelay[T interface{}](n int64, valid func(token int64, valu
 	var tl float64
 	values := make([]T, len(L))
 	for i := int64(0); i < n; i++ {
-		r := rand.Intn(1000)
+		r := rand.Int63n(usec)
 		time.Sleep(time.Duration(r) * time.Microsecond)
 
 		t := timing.Max()
