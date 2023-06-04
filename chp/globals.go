@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"math/rand"
+	"time"
 
 	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
 )
@@ -28,6 +30,9 @@ type Globals interface {
 
 	SetDebug(debug bool)
 	Debug() bool
+	
+	RandomTiming(maxDelay time.Duration)
+	Timing()
 }
 
 type cycle struct {
@@ -47,6 +52,7 @@ type globals struct {
 
 	// timing profile
 	t timing.ProfileSet
+	maxDelay time.Duration
 
 	// cycle logger
 	log *os.File
@@ -238,3 +244,17 @@ func (g *globals) SetDebug(debug bool) {
 func (g *globals) Debug() bool {
 	return g.debug
 }
+
+func (g *globals) RandomTiming(maxDelay time.Duration) {
+	g.maxDelay = maxDelay
+	for _, child := range g.children {
+		child.RandomTiming(g.maxDelay)
+	}
+}
+
+func (g *globals) Timing() {
+	if g.maxDelay > 0 {
+		time.Sleep(time.Duration(rand.Int63n(int64(g.maxDelay))))
+	}
+}
+

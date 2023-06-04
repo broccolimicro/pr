@@ -488,6 +488,7 @@ func (s *sender[T]) Send(value T, args ...float64) float64 {
 		start += args[0]
 	}
 
+	s.g.Timing()
 	if s.g.Debug() && s.c.name != "" {
 		fmt.Printf("%f ns\t\t%s!%v\t\t%s\n", start, s.c.name, value, s.g.Name())
 	}
@@ -498,6 +499,7 @@ func (s *sender[T]) Send(value T, args ...float64) float64 {
 
 	s.c.buffer[s.c.write] = timing.Value[T]{start, value}
 	
+	s.g.Timing()
 	t, ok := s.c.EndSend()
 	if !ok {
 		panic(timing.Deadlock)
@@ -541,6 +543,7 @@ func (s *sender[T]) Ready() bool {
 		panic(fmt.Errorf("you must call g.Init for this sender"))
 	}
 
+	s.g.Timing()
 	rdy := s.c.Ready()
 	if s.g.Debug() && s.c.name != "" {
 		if rdy {
@@ -563,6 +566,7 @@ func (s *sender[T]) Wait(args ...float64) float64 {
 		start += args[0]
 	}
 
+	s.g.Timing()
 	if s.g.Debug() && s.c.name != "" {
 		fmt.Printf("%f ns\t\t#%s!\t\t%s\n", start, s.c.name, s.g.Name())
 	}
@@ -571,6 +575,7 @@ func (s *sender[T]) Wait(args ...float64) float64 {
 		panic(timing.Deadlock)
 	}
 	
+	s.g.Timing()
 	t, ok := s.c.EndWait(start)
 	if !ok {
 		panic(timing.Deadlock)
@@ -618,6 +623,7 @@ func (r *receiver[T]) Recv(args ...float64) (T, float64) {
 		start += args[0]
 	}
 
+	r.g.Timing()
 	if r.g.Debug() && r.c.name != "" {
 		fmt.Printf("%f ns\t\t%s?\t\t%s\n", start, r.c.name, r.g.Name())
 	}
@@ -636,6 +642,7 @@ func (r *receiver[T]) Recv(args ...float64) (T, float64) {
 	}
 	r.logged = false
 
+	r.g.Timing()
 	if !r.c.EndRecv(result.T) {
 		panic(timing.Deadlock)
 	}
@@ -676,6 +683,7 @@ func (r *receiver[T]) Valid() bool {
 		panic(fmt.Errorf("you must call g.Init for this receiver"))
 	}
 
+	r.g.Timing()
 	val := r.c.Valid()
 	if r.g.Debug() && r.c.name != "" {
 		if val {
@@ -698,6 +706,7 @@ func (r *receiver[T]) Probe(args ...float64) (T, float64) {
 		start += args[0]
 	}
 
+	r.g.Timing()
 	if r.g.Debug() && r.c.name != "" {
 		fmt.Printf("%f ns\t\t#%s?\t\t%s\n", start, r.c.name, r.g.Name())
 	}
@@ -716,6 +725,7 @@ func (r *receiver[T]) Probe(args ...float64) (T, float64) {
 	}
 	r.logged = true
 
+	r.g.Timing()
 	if !r.c.EndProbe() {
 		panic(timing.Deadlock)
 	}
