@@ -113,35 +113,3 @@ func (t *set) Get() float64 {
 	return t.value
 }
 
-func Catch[T interface{}](c chan T) {
-	r := recover()
-	if r == Deadlock {
-		close(c)
-	} else if r != nil {
-		panic(r)
-	}
-}
-
-func OnAction[T interface{}](op func(args ...float64) (T, float64), args ...float64) Action[T] {
-	var send Action[T] = make(chan Value[T], 1)
-
-	go func() {
-		defer Catch(send)
-		v, t := op(args...)
-		send <- Value[T]{t, v}
-	}()
-
-	return send
-}
-
-func OnSignal(op func(args ...float64) float64, args ...float64) Signal {
-	var send Signal = make(chan float64, 1)
-
-	go func() {
-		defer Catch(send)
-		send <- op(args...)
-	}()
-
-	return send
-}
-

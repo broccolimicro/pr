@@ -58,6 +58,11 @@ type Receiver[T interface{}] interface {
 
 	// Blocking Probe
 	Probe(args ...float64) (T, float64)
+	Wait(args ...float64) float64
+}
+
+type Waiter interface{
+	Wait(args ...float64) float64
 }
 
 type Channel[T interface{}] struct {
@@ -118,6 +123,67 @@ func Receivers[T interface{}](B ...interface{}) (r []Receiver[T]) {
 		}
 	}
 	return
+}
+
+func Recover[T interface{}](c chan T) {
+	r := recover()
+	if r == timing.Deadlock {
+		close(c)
+	} else if r != nil {
+		panic(r)
+	}
+}
+
+func OnAction[T interface{}](op func(args ...float64) (T, float64), args ...float64) timing.Action[T] {
+	var send timing.Action[T] = make(chan timing.Value[T], 1)
+
+	go func() {
+		defer Recover(send)
+		v, t := op(args...)
+		send <- timing.Value[T]{t, v}
+	}()
+
+	return send
+}
+
+func OnSignal(op func(args ...float64) float64, args ...float64) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
+
+	go func() {
+		defer Recover(send)
+		send <- op(args...)
+	}()
+
+	return send
+}
+
+func On(ports ...interface{}) timing.Signal {
+	var send timing.Signal = make(chan float64, 1)
+
+	go func() {
+		defer Recover(send)
+		t_o := timing.Max()
+		for _, b := range ports {
+			if bi, ok := b.(Waiter); ok {
+				t_o.Add(bi.Wait())
+			} else if reflect.TypeOf(b).Kind() == reflect.Slice || reflect.TypeOf(b).Kind() == reflect.Array {
+				items := reflect.ValueOf(b)
+				for i := 0; i < items.Len(); i++ {
+					item := items.Index(i).Interface()
+					if bi, ok := item.(Waiter); ok {
+						t_o.Add(bi.Wait())
+					} else {
+						panic(Misconfigured)
+					}
+				}
+			} else {
+				panic(Misconfigured)
+			}
+		}
+		send <- t_o.Get()
+	}()
+
+	return send
 }
 
 type channel[T interface{}] struct {
@@ -511,7 +577,7 @@ func (s *sender[T]) Offer(value T, args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer timing.Catch(chan float64(send))
+		defer Recover(chan float64(send))
 		send <- s.Send(value, args...)
 	}()
 
@@ -522,7 +588,7 @@ func (s *sender[T]) Watch(args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer timing.Catch(send)
+		defer Recover(send)
 		send <- s.Wait(args...)
 	}()
 
@@ -649,7 +715,7 @@ func (r *receiver[T]) Expect(args ...float64) timing.Action[T] {
 	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
-		defer timing.Catch(chan timing.Value[T](recv))
+		defer Recover(chan timing.Value[T](recv))
 		v, t := r.Recv(args...)
 		recv <- timing.Value[T]{t, v}
 	}()
@@ -661,7 +727,7 @@ func (r *receiver[T]) Read(args ...float64) timing.Action[T] {
 	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
-		defer timing.Catch(recv)
+		defer Recover(recv)
 		v, t := r.Probe(args...)
 		recv <- timing.Value[T]{t, v}
 	}()
@@ -726,6 +792,11 @@ func (r *receiver[T]) Probe(args ...float64) (T, float64) {
 	}
 
 	return result.V, result.T - r.g.Curr()
+}
+
+func (r *receiver[T]) Wait(args ...float64) float64 {
+	_, t := r.Probe(args...)
+	return t
 }
 
 func (r *receiver[T]) Close() error {
