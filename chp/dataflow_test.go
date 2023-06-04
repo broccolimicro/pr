@@ -9,7 +9,7 @@ import (
 
 func TestIntegrationConnect(t *testing.T) {
 	profile := param.String(1, "example.prof")
-	out := param.String(2, "test/chp/buffer")
+	out := param.String(2, "test/chp/connect")
 	min := param.Int64(3, int64(0))
 	max := param.Int64(4, int64(2))
 

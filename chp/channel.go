@@ -423,6 +423,7 @@ func (c *channel[T]) incWrite() int {
 }
 
 func (c *channel[T]) BeginSend() bool {
+	c.sendMu.Lock()
 	c.cond.L.Lock()
 	defer c.cond.L.Unlock()
 
@@ -434,14 +435,13 @@ func (c *channel[T]) BeginSend() bool {
 		c.cond.Wait()
 	}
 
-	c.sendMu.Lock()
 	return true
 }
 
 func (c *channel[T]) EndSend() (float64, bool) {
 	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
 	defer c.sendMu.Unlock()
+	defer c.cond.L.Unlock()
 
 	i := c.incWrite()
 	c.cond.Signal()
@@ -459,6 +459,7 @@ func (c *channel[T]) EndSend() (float64, bool) {
 }
 
 func (c *channel[T]) BeginRecv() bool {
+	c.recvMu.Lock()
 	c.cond.L.Lock()
 	defer c.cond.L.Unlock()
 
@@ -470,14 +471,13 @@ func (c *channel[T]) BeginRecv() bool {
 		c.cond.Wait()
 	}
 
-	c.recvMu.Lock()
 	return true
 }
 
 func (c *channel[T]) EndRecv(t float64) bool {
 	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
 	defer c.recvMu.Unlock()
+	defer c.cond.L.Unlock()
 
 	if c.recvDead() {
 		c.cond.Signal()
@@ -492,23 +492,34 @@ func (c *channel[T]) EndRecv(t float64) bool {
 
 func (c *channel[T]) EndWait(t float64) (float64, bool) {
 	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
 	defer c.sendMu.Unlock()
+	defer c.cond.L.Unlock()
 
 	if c.readyTime > t {
 		t = c.readyTime
 	}
+
+	if c.sendDead() {
+		c.cond.Signal()
+		return t, false
+	}
+
 	c.cond.Signal()
-	return t, !c.sendDead()
+	return t, true
 }
 
 func (c *channel[T]) EndProbe() bool {
 	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
 	defer c.recvMu.Unlock()
+	defer c.cond.L.Unlock()
+
+	if c.recvDead() {
+		c.cond.Signal()
+		return false
+	}
 
 	c.cond.Signal()
-	return !c.recvDead()
+	return true
 }
 
 func (c *channel[T]) Ready() bool {
