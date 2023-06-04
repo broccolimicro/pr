@@ -97,7 +97,7 @@ func (self *sender) Offer(value int64, args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer chp.Recover(chan float64(send))
+		defer timing.Catch(chan float64(send))
 		send <- self.Send(value, args...)
 	}()
 
@@ -140,7 +140,7 @@ func (r *receiver) Expect(args ...float64) timing.Action[int64] {
 	var recv timing.Action[int64] = make(chan timing.Value[int64], 1)
 
 	go func() {
-		defer chp.Recover(chan timing.Value[int64](recv))
+		defer timing.Catch(chan timing.Value[int64](recv))
 		v, t := r.Recv(args...)
 		recv <- timing.Value[int64]{t, v}
 	}()
@@ -264,7 +264,7 @@ func (self *bigsender) Offer(value *big.Int, args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer chp.Recover(chan float64(send))
+		defer timing.Catch(chan float64(send))
 		send <- self.Send(value, args...)
 	}()
 
@@ -307,7 +307,7 @@ func (r *bigreceiver) Expect(args ...float64) timing.Action[*big.Int] {
 	var recv timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 
 	go func() {
-		defer chp.Recover(chan timing.Value[*big.Int](recv))
+		defer timing.Catch(chan timing.Value[*big.Int](recv))
 		v, t := r.Recv(args...)
 		recv <- timing.Value[*big.Int]{t, v}
 	}()
@@ -400,7 +400,7 @@ func (self *parallelsender) Offer(value int64, args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer chp.Recover(chan float64(send))
+		defer timing.Catch(chan float64(send))
 		send <- self.Send(value, args...)
 	}()
 
@@ -463,7 +463,7 @@ func (r *parallelreceiver) Expect(args ...float64) timing.Action[int64] {
 	var recv timing.Action[int64] = make(chan timing.Value[int64], 1)
 
 	go func() {
-		defer chp.Recover(chan timing.Value[int64](recv))
+		defer timing.Catch(chan timing.Value[int64](recv))
 		v, t := r.Recv(args...)
 		recv <- timing.Value[int64]{t, v}
 	}()
@@ -581,7 +581,7 @@ func (self *bigparallelsender) Offer(value *big.Int, args ...float64) timing.Sig
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer chp.Recover(chan float64(send))
+		defer timing.Catch(chan float64(send))
 		send <- self.Send(value, args...)
 	}()
 
@@ -644,7 +644,7 @@ func (r *bigparallelreceiver) Expect(args ...float64) timing.Action[*big.Int] {
 	var recv timing.Action[*big.Int] = make(chan timing.Value[*big.Int], 1)
 
 	go func() {
-		defer chp.Recover(chan timing.Value[*big.Int](recv))
+		defer timing.Catch(chan timing.Value[*big.Int](recv))
 		v, t := r.Recv(args...)
 		recv <- timing.Value[*big.Int]{t, v}
 	}()

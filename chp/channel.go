@@ -120,15 +120,6 @@ func Receivers[T interface{}](B ...interface{}) (r []Receiver[T]) {
 	return
 }
 
-func Recover[T interface{}](c chan T) {
-	r := recover()
-	if r == timing.Deadlock {
-		close(c)
-	} else if r != nil {
-		panic(r)
-	}
-}
-
 type channel[T interface{}] struct {
 	name string
 	read int
@@ -520,7 +511,7 @@ func (s *sender[T]) Offer(value T, args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer Recover(chan float64(send))
+		defer timing.Catch(chan float64(send))
 		send <- s.Send(value, args...)
 	}()
 
@@ -531,7 +522,7 @@ func (s *sender[T]) Watch(args ...float64) timing.Signal {
 	var send timing.Signal = make(chan float64, 1)
 
 	go func() {
-		defer Recover(send)
+		defer timing.Catch(send)
 		send <- s.Wait(args...)
 	}()
 
@@ -658,7 +649,7 @@ func (r *receiver[T]) Expect(args ...float64) timing.Action[T] {
 	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
-		defer Recover(chan timing.Value[T](recv))
+		defer timing.Catch(chan timing.Value[T](recv))
 		v, t := r.Recv(args...)
 		recv <- timing.Value[T]{t, v}
 	}()
@@ -670,7 +661,7 @@ func (r *receiver[T]) Read(args ...float64) timing.Action[T] {
 	var recv timing.Action[T] = make(chan timing.Value[T], 1)
 
 	go func() {
-		defer Recover(recv)
+		defer timing.Catch(recv)
 		v, t := r.Probe(args...)
 		recv <- timing.Value[T]{t, v}
 	}()
