@@ -229,8 +229,6 @@ class Record:
 			for member in self.members:
 				member.createInjectExpect(path, vdir)
 		elif len(self.desc) > 0 and self.desc != "true" and self.desc != "false":
-			print(self.desc)
-			print(vdir)
 			cname = self.desc
 			if '.' in cname:
 				cname = cname[0:cname.index('.')]
@@ -240,8 +238,6 @@ class Record:
 			elif vdir == '!':
 				chanpath += '.s'
 			argpath = path+'/'+str(self)+'.dat'
-			print(chanpath)
-			print(argpath)
 			rec = None
 			with open(chanpath, "r") as chanptr:
 				with open(argpath, "w") as argptr:
@@ -249,7 +245,6 @@ class Record:
 						if i == 0:
 							# read the header
 							rec = Record(line[10:])
-							print([(member.name, member.desc) for member in rec.members])
 						else:
 							inst = Record(line.split("\t")[1])
 							sub = ""
@@ -481,7 +476,6 @@ set_reset g.Reset
 						elif arg.vtype.name == "e1of":
 							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
 						elif arg.vtype.name == "bus2_e1of":
-							print(val.name.desc, [str(member) for member in val.name.members])
 							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name.members[0], val.vdir)
 							channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
 
