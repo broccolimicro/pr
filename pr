@@ -7,6 +7,7 @@ import shlex
 import enum
 import operator
 import copy
+import pprint
 
 # Expression Parser
 ###############################################################################
@@ -181,6 +182,87 @@ def parseArgs(line):
 		result.append(arg.strip())
 	return result
 
+class Record:
+	def __init__(self, desc):
+		desc = desc.strip()
+		self.desc = desc
+		self.name = ""
+		self.members = []
+		if len(desc) > 0:
+			if '{' in desc:
+				start = desc.index('{')
+				if start > 0 and desc[start-1] == ':':
+					self.name = desc[0:start]
+				self.members = [Record(arg) for arg in desc[start+1:-1].split(" ")]
+			elif ':' in desc:
+				start = desc.index(':')
+				self.name = desc[0:start]
+				self.desc = desc[start+1:]
+
+	def __str__(self):
+		return self.desc.replace('.','_')
+
+	def addr(self, name):
+		search = name
+		sub = ""
+		if '.' in search:
+			idx = search.index('.')
+			sub = search[idx+1:]
+			search = search[0:idx]
+
+		for i, member in enumerate(self.members):
+			if member.name == search:
+				return [i] + member.addr(sub)
+
+		return []
+
+	def at(self, idx):
+		if len(idx) == 0:
+			return self
+		elif idx[0] < len(self.members):
+			return self.members[idx[0]].at(idx[1:])
+		else:
+			return None
+
+	def createInjectExpect(self, path, vdir):
+		if len(self.members) > 0:
+			for member in self.members:
+				member.createInjectExpect(path, vdir)
+		elif len(self.desc) > 0 and self.desc != "true" and self.desc != "false":
+			print(self.desc)
+			print(vdir)
+			cname = self.desc
+			if '.' in cname:
+				cname = cname[0:cname.index('.')]
+			chanpath = path+'/chp/top.dut.'+cname
+			if vdir == '?':
+				chanpath += '.r'
+			elif vdir == '!':
+				chanpath += '.s'
+			argpath = path+'/'+str(self)+'.dat'
+			print(chanpath)
+			print(argpath)
+			rec = None
+			with open(chanpath, "r") as chanptr:
+				with open(argpath, "w") as argptr:
+					for i, line in enumerate(chanptr):
+						if i == 0:
+							# read the header
+							rec = Record(line[10:])
+							print([(member.name, member.desc) for member in rec.members])
+						else:
+							inst = Record(line.split("\t")[1])
+							sub = ""
+							if '.' in self.desc:
+								idx = self.desc.index('.')
+								search = self.desc[idx+1:]
+							value = str(inst.at(rec.addr(search)))
+							if value == "false":
+								value = 0
+							elif value == "true":
+								value = 1
+							print(value, file=argptr)
+
 class ChpTerm:
 	def __init__(self, name, vdir):
 		self.name = name
@@ -195,10 +277,7 @@ def parseChpTerms(line):
 			vdir = arg[-1]
 			arg = arg[0:-1]
 
-		if " " in arg:
-			result.append(ChpTerm([sub.strip() for sub in arg.split(" ")], vdir))
-		else:
-			result.append(ChpTerm(arg, vdir))
+		result.append(ChpTerm(Record(arg), vdir))
 	return result
 
 def parseType(line):
@@ -266,9 +345,20 @@ class Deftest:
 				chp += " "
 			chp += shlex.quote(item)
 
+		cmd = 'go test ' + projectRoot() + '/... -v -run ' + shlex.quote(self.chptest[0]) + ' -args'
+		if "ACT_PROFILE" in os.environ:
+			cmd += ' \"' + projectRoot() + '/$ACT_PROFILE\"'
+		else:
+			cmd += ' \"\" '
+		cmd += ' \'' + path + '/chp\' ' + chp
+
 		os.system('mkdir -p \'' + path + '\'')
-		print('go test ' + projectRoot() + '/... -v -run ' + shlex.quote(self.chptest[0]) + ' -args \'' + path + '\' ' + chp)
-		os.system('go test ' + projectRoot() + '/... -v -run ' + shlex.quote(self.chptest[0]) + ' -args \'' + path + '\' ' + chp)
+		print(cmd)
+		os.system(cmd)
+
+		for arg in self.proc.args:
+			arg.name.createInjectExpect(path, arg.vdir)
+		
 		return path
 
 def findTests():
@@ -350,11 +440,12 @@ def pr_test():
 				proc.path = proc.path[4:]
 
 			with open(path + "/test.act", "w") as fptr:
+				print("import \"globals.act\";", file=fptr)
 				print("import \"" + proc.path + "\";", file=fptr)
 				print("import \"qdi/sink.act\";", file=fptr)
 				print("", file=fptr)
 
-				print("\ndefproc testbench(" + proc.argdef() + ")", file=fptr)
+				print("defproc testbench(" + proc.argdef() + ")", file=fptr)
 				print("{", file=fptr)
 				print("\t[ DUT ->", file=fptr)
 				print("\t" + test.proc.typestr() + " dut;", file=fptr)
@@ -382,15 +473,17 @@ set_reset g.Reset
 				for arg, val in zip(proc.args, test.proc.args):
 					if val.name:
 						if arg.vtype.name == "bool":
-							if val.name == "true":
+							value = str(val.name)
+							if value == "true":
 								channels += ["set dut." + arg.name + " 1"]
-							elif val.name == "false":
+							elif value == "false":
 								channels += ["set dut." + arg.name + " 0"]
 						elif arg.vtype.name == "e1of":
 							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
 						elif arg.vtype.name == "bus2_e1of":
-							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name[0], val.vdir)
-							channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name[1], val.vdir)
+							print(val.name.desc, [str(member) for member in val.name.members])
+							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name.members[0], val.vdir)
+							channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
 
 				print("\n".join(channels), file=fptr)
 
@@ -401,19 +494,21 @@ set g.Vdd 1
 set g.GND 0
 set g._sReset 0
 set g.sReset 1
-set g._pReset 0
-set g.pReset 1
+set g._pReset 1
+set g.pReset 0
 
 cycle
 
-set g._pReset 1
-set g.pReset 0
+set g._pReset 0
+set g.pReset 1
 
 cycle
 
 mode run
 status X
 
+set g._pReset 1
+set g.pReset 0
 set g._sReset 1
 set g.sReset 0
 
