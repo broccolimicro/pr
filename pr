@@ -411,6 +411,97 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 			init = " init" if vdir == '?' else "")
 	]
 
+def print_test_act(path, test, proc):
+	with open(path + "/test.act", "w") as fptr:
+		print("import \"globals.act\";", file=fptr)
+		print("import \"" + proc.path + "\";", file=fptr)
+		print("import \"qdi/sink.act\";", file=fptr)
+		print("", file=fptr)
+
+		print("defproc testbench(" + proc.argdef() + ")", file=fptr)
+		print("{", file=fptr)
+		print("\t[ DUT ->", file=fptr)
+		print("\t" + test.proc.typestr() + " dut;", file=fptr)
+		for arg in proc.args:
+			print("\t" + arg.name + " = dut." + arg.name + ";", file=fptr)
+		print("\t]", file=fptr)
+		print("}\n", file=fptr)
+
+		for arg, val in zip(proc.args, test.proc.args):
+			print(arg.inst(), file=fptr)
+			if val.name and val.vdir == '!':
+				print(arg.sink(), file=fptr)
+
+		print("testbench dut(" + proc.arglist() + ");", file=fptr)
+
+def print_prsim_rc(path, name, test, proc, xyce = False):
+	with open(path + "/" + name, "w") as fptr:
+		print("initialize", file=fptr)
+		if xyce:
+			print("random 0 10", file=fptr)
+		else:
+			print("random", file=fptr)
+		print("""random_excl on
+
+set_reset g.Reset
+""", file=fptr)
+
+		channels = []
+		for arg, val in zip(proc.args, test.proc.args):
+			if val.name:
+				if arg.vtype.name == "bool":
+					value = str(val.name)
+					if value == "true":
+						channels += ["set dut." + arg.name + " 1"]
+					elif value == "false":
+						channels += ["set dut." + arg.name + " 0"]
+				elif arg.vtype.name == "e1of":
+					channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
+				elif arg.vtype.name == "bus2_e1of":
+					channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name.members[0], val.vdir)
+					channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
+
+		print("\n".join(channels), file=fptr)
+
+		print("""
+watchall
+mode reset
+set g.Vdd 1
+set g.GND 0
+set g._sReset 0
+set g.sReset 1
+set g._pReset 1
+set g.pReset 0""", file=fptr)
+
+		if xyce:
+			print("advance 400", file=fptr)
+		else:
+			print("cycle", file=fptr)
+
+		print("""
+set g._pReset 0
+set g.pReset 1""", file=fptr)
+
+		if xyce:
+			print("advance 400", file=fptr)
+		else:
+			print("cycle", file=fptr)
+
+		print("""
+mode run
+status X
+
+set g._pReset 1
+set g.pReset 0
+set g._sReset 1
+set g.sReset 0""", file=fptr)
+		
+		if xyce:
+			print("advance 10000000", file=fptr)
+		else:
+			print("cycle", file=fptr)
+
+
 def pr_test():
 	root = projectRoot()
 	if root == "/":
@@ -434,81 +525,13 @@ def pr_test():
 			if proc.path.startswith("prs/"):
 				proc.path = proc.path[4:]
 
-			with open(path + "/test.act", "w") as fptr:
-				print("import \"globals.act\";", file=fptr)
-				print("import \"" + proc.path + "\";", file=fptr)
-				print("import \"qdi/sink.act\";", file=fptr)
-				print("", file=fptr)
+			print_test_act(path, test, proc)
 
-				print("defproc testbench(" + proc.argdef() + ")", file=fptr)
-				print("{", file=fptr)
-				print("\t[ DUT ->", file=fptr)
-				print("\t" + test.proc.typestr() + " dut;", file=fptr)
-				for arg in proc.args:
-					print("\t" + arg.name + " = dut." + arg.name + ";", file=fptr)
-				print("\t]", file=fptr)
-				print("}\n", file=fptr)
-
-				for arg, val in zip(proc.args, test.proc.args):
-					print(arg.inst(), file=fptr)
-					if val.name and val.vdir == '!':
-						print(arg.sink(), file=fptr)
-
-				print("testbench dut(" + proc.arglist() + ");", file=fptr)	
-
-			with open(path + "/prsim.rc", "w") as fptr:
-				print("""initialize
-random
-random_excl on
-
-set_reset g.Reset
-""", file=fptr)
-
-				channels = []
-				for arg, val in zip(proc.args, test.proc.args):
-					if val.name:
-						if arg.vtype.name == "bool":
-							value = str(val.name)
-							if value == "true":
-								channels += ["set dut." + arg.name + " 1"]
-							elif value == "false":
-								channels += ["set dut." + arg.name + " 0"]
-						elif arg.vtype.name == "e1of":
-							channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
-						elif arg.vtype.name == "bus2_e1of":
-							channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name.members[0], val.vdir)
-							channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
-
-				print("\n".join(channels), file=fptr)
-
-				print("""
-watchall
-mode reset
-set g.Vdd 1
-set g.GND 0
-set g._sReset 0
-set g.sReset 1
-set g._pReset 1
-set g.pReset 0
-
-cycle
-
-set g._pReset 0
-set g.pReset 1
-
-cycle
-
-mode run
-status X
-
-set g._pReset 1
-set g.pReset 0
-set g._sReset 1
-set g.sReset 0
-
-cycle""", file=fptr)
+			print_prsim_rc(path, "prsim.rc", test, proc, False)
+			print_prsim_rc(path, "xyce.rc", test, proc, True)
 
 if __name__ == "__main__":
+	tech = "sky130"
 	if len(sys.argv) > 1:
 		if sys.argv[1] == "init" and len(sys.argv) > 2:
 			os.system("git init")
@@ -521,23 +544,33 @@ if __name__ == "__main__":
 		elif sys.argv[1] == "sim":
 			os.system("prsim " + " ".join([shlex.quote(arg) for arg in sys.argv[2:]]))
 		elif sys.argv[1] == "view":
-			hasIndex = False
-			with open(sys.argv[2], 'r') as fptr:
-				if fptr.readline().startswith("Index"):
-					hasIndex = True
-			if hasIndex:
-				os.system("sed -i 's/^[^ ]* *//g' " + shlex.quote(sys.argv[2]))
-			os.system("gaw " + shlex.quote(sys.argv[2]))
+			if sys.argv[2].endswith(".sim"):
+				target = sys.argv[2][0:-4] + ".vcd"
+				os.system("sim2vcd.py " + shlex.quote(sys.argv[2]))
+				os.system("gtkwave " + target)
+			elif sys.argv[2].endswith(".vcd"):
+				os.system("gtkwave " + sys.argv[2])
+			elif sys.argv[2].endswith(".prn"):
+				hasIndex = False
+				with open(sys.argv[2], 'r') as fptr:
+					if fptr.readline().startswith("Index"):
+						hasIndex = True
+				if hasIndex:
+					os.system("sed -i 's/^[^ ]* *//g' " + shlex.quote(sys.argv[2]))
+				os.system("gaw " + shlex.quote(sys.argv[2]))
 		elif sys.argv[1] == "build" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
-			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" aflat -DDUT=true -DPRSIM=true test.act > test.prs")
+			tech = "sky130"
+			if len(sys.argv) > 2:
+				tech = shlex.quote(sys.argv[2])
+			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" aflat -T"+tech+" -DDUT=true -DPRSIM=true test.act > test.prs")
 		elif sys.argv[1] == "spice" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
 			tech = "sky130"
 			if len(sys.argv) > 2:
 				tech = shlex.quote(sys.argv[2])
 			if os.path.exists("spice"):
 				os.system("rm -rf spice")
-			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" prspice -B -C " + tech + " -p 'testbench<>' -i 'dut' -s 'g.Vdd=1.8v;g.GND=0.0v;gwrap.Vdd=1.8v;gwrap.GND=0.0v' test.act prsim.rc -o spice")
+			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" prspice -C " + tech + " -p 'testbench<>' -i 'dut' -s 'g.Vdd=1.8v;g.GND=0.0v;gwrap.Vdd=1.8v;gwrap.GND=0.0v' test.act xyce.rc -o spice")
 			os.system("mv spice/dut.spi spice/long.spi")
-			os.system("shortenspice.py spice/long.spi > spice/dut.spi")
+			os.system("shortenspice spice/long.spi > spice/dut.spi")
 			os.system("cp *.dat spice")
 
