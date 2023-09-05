@@ -151,8 +151,10 @@ class Defarg:
 			vtype.name = "e1of"
 			vtype.params = [vtype.params[1]]
 			connect += ".c"
+
 		vtype.params.append(6)
 		return "sink_" + str(vtype) + " sink_" + name + "(g, " + connect + ");"
+
 	def inst(self):
 		return str(self.vtype) + " " + self.name + ";"
 
@@ -228,7 +230,7 @@ class Record:
 		if len(self.members) > 0:
 			for member in self.members:
 				member.createInjectExpect(path, vdir)
-		elif len(self.desc) > 0 and self.desc != "true" and self.desc != "false":
+		elif len(self.desc) > 0 and vdir:
 			cname = self.desc
 			if '.' in cname:
 				cname = cname[0:cname.index('.')]
@@ -247,7 +249,7 @@ class Record:
 							rec = Record(line[10:])
 						else:
 							inst = Record(line.split("\t")[1])
-							sub = ""
+							search = self.desc
 							if '.' in self.desc:
 								idx = self.desc.index('.')
 								search = self.desc[idx+1:]
@@ -259,20 +261,33 @@ class Record:
 							print(value, file=argptr)
 
 class ChpTerm:
-	def __init__(self, name, vdir):
+	def __init__(self, name, vdir, clk="", posedge=True):
 		self.name = name
 		self.vdir = vdir
+		self.clk = clk
+		self.posedge = posedge
 
 def parseChpTerms(line):
 	result = []
 	for arg in line.split(","):
 		arg = arg.strip()
 		vdir = ""
+		clk = ""
+		posedge = True
+		if '@' in arg:
+			lst = arg.split("@")
+			arg = lst[0]
+			clk = lst[1]
+			if len(clk) > 0 and clk[-1] in "+-":
+				if clk[-1] == "-":
+					posedge = False
+				clk = clk[0:-1]
+
 		if len(arg) > 0 and arg[-1] in "?!":
 			vdir = arg[-1]
 			arg = arg[0:-1]
-
-		result.append(ChpTerm(Record(arg), vdir))
+		
+		result.append(ChpTerm(Record(arg), vdir, clk, posedge))
 	return result
 
 def parseType(line):
@@ -395,21 +410,38 @@ def emit_chan(name, proto, rails, chp, vdir):
 	]
 
 def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
-	return [
-		"clocked_bus dut.{name}.d[0:{wires}] dut.{clk} {edge}{pair}{half}".format(
-			name  = name,
-			clk   = clk,
-			wires = wires,
-			edge  = "posedge" if posedge else "negedge",
-			pair  = " pair" if pair else "",
-			half = " half"),
-		"{kind} dut.{name}.d[0:{wires}]{init} {chp}.dat".format(
-			kind  = "inject" if vdir == '?' else "expect",
-			name  = name,
-			wires = wires,
-			chp   = chp,
-			init = " init" if vdir == '?' else "")
-	]
+	if int(wires) > 0:
+		return [
+			"clocked_bus dut.{name}.d[0:{wires}] dut.{clk} {edge}{pair}{half}".format(
+				name  = name,
+				clk   = clk,
+				wires = wires,
+				edge  = "posedge" if posedge else "negedge",
+				pair  = " pair" if pair else "",
+				half = " half"),
+			"{kind} dut.{name}.d[0:{wires}]{init} {chp}.dat".format(
+				kind  = "inject" if vdir == '?' else "expect",
+				name  = name,
+				wires = wires,
+				chp   = chp,
+				init = " init" if vdir == '?' else "")
+		]
+	else:
+		return [
+			"clocked_bus dut.{name} dut.{clk} {edge}{pair}{half}".format(
+				name  = name,
+				clk   = clk,
+				wires = wires,
+				edge  = "posedge" if posedge else "negedge",
+				pair  = " pair" if pair else "",
+				half = " half"),
+			"{kind} dut.{name}{init} {chp}.dat".format(
+				kind  = "inject" if vdir == '?' else "expect",
+				name  = name,
+				wires = wires,
+				chp   = chp,
+				init = " init" if vdir == '?' else "")
+		]
 
 def print_test_act(path, test, proc):
 	with open(path + "/test.act", "w") as fptr:
@@ -429,7 +461,7 @@ def print_test_act(path, test, proc):
 
 		for arg, val in zip(proc.args, test.proc.args):
 			print(arg.inst(), file=fptr)
-			if val.name and val.vdir == '!':
+			if val.name and val.vdir == '!' and not val.clk:
 				print(arg.sink(), file=fptr)
 
 		print("testbench dut(" + proc.arglist() + ");", file=fptr)
@@ -455,6 +487,22 @@ set_reset g.Reset
 						channels += ["set dut." + arg.name + " 1"]
 					elif value == "false":
 						channels += ["set dut." + arg.name + " 0"]
+					elif val.clk:
+						if len(arg.vtype.params) > 0:
+							channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, False, val.name.members[1], val.vdir)
+						else:
+							channels += emit_bus(arg.name, val.clk, 0, val.posedge, False, val.name.members[1], val.vdir)
+				elif arg.vtype.name == "pair":
+					value = str(val.name)
+					if value == "true":
+						channels += ["set dut." + arg.name + ".d[1] 1", "set dut." + arg.name + ".d[0] 0"]
+					elif value == "false":
+						channels += ["set dut." + arg.name + ".d[1] 0", "set dut." + arg.name + ".d[0] 1"]
+					elif val.clk:
+						if len(arg.vtype.params) > 0:
+							channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, True, val.name, val.vdir)
+						else:
+							channels += emit_bus(arg.name, val.clk, 0, val.posedge, True, val.name, val.vdir)
 				elif arg.vtype.name == "e1of":
 					channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
 				elif arg.vtype.name == "bus2_e1of":
