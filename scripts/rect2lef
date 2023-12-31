@@ -177,6 +177,21 @@ def writeGDS(path, conf, cell):
 	lib.write_gds(path)
 
 def writeLEF(path, conf, cell):
+	# See https://github.com/KLayout/klayout/blob/766dd675c11d98b2461c448035197f6e934cb497/src/plugins/streamers/lefdef/db_plugin/dbLEFDEFImporter.cc#L1085
+	# Purpose Name = Placement Code
+  # LEFPIN       = LEFPIN
+	# PIN          = PIN
+	# LEFPINNAME   = LEFLABEL
+	# PINNAME      = LABEL
+	# FILL         = FILL
+	# FILLOPC      = FILLOPC
+	# LEFOBS       = OBS
+	# SPNET        = SPNET
+	# NET          = NET
+	# VIA          = VIA
+	# BLOCKAGE     = BLK
+	# ALL = [LEFPIN, PIN, FILL, FILLOPC, OBS, SPNET, NET, VIA]
+
 	scale = conf["general"]["scale"]
 	numMetals = conf["general"]["metals"]
 	with open(path, "w") as fptr:
