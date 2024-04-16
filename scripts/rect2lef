@@ -59,11 +59,26 @@ def queryGDS(conf, rectLayer):
 			gds = conf["materials"][rectLayer]["gds"]
 		if "gds_bloat" in conf["materials"][rectLayer]:
 			gds_bloat = conf["materials"][rectLayer]["gds_bloat"]
-	else:
+	elif rectLayer in conf["materials"]["metal"]:
 		if rectLayer+"_gds" in conf["materials"]["metal"]:
 			gds = conf["materials"]["metal"][rectLayer+"_gds"]
 		if rectLayer+"_gds_bloat" in conf["materials"]["metal"]:
 			gds_bloat = conf["materials"]["metal"][rectLayer+"_gds_bloat"]
+	else:
+		subkey = ""
+		for key, value in conf["vias"].items():
+			if key.endswith("_name"):
+				if value == rectLayer:
+					subkey = key[0:-5]
+					break
+		if subkey != "":
+			if subkey+"_gds" in conf["vias"]:
+				gds = conf["vias"][subkey+"_gds"]
+			if subkey+"_gds_bloat" in conf["vias"]:
+				gds_bloat = conf["vias"][subkey+"_gds_bloat"]
+		else:
+			print("unrecognized layer {rectLayer}")
+
 	return zip(gds, gds_bloat)
 
 TAP, FILL, CELL, BLOCK = range(4)
