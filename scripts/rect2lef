@@ -9,6 +9,13 @@ try:
 except ImportError:
 	hasGDSTK = False
 
+def splitLayerID(layerID):
+	name = layerID
+	purpose = ""
+	if "." in name:
+		name, purpose = layerID.rsplit(".", 1)
+	return name, purpose
+
 def stripComments(line):
 	escape = False
 	inString = False
@@ -134,32 +141,6 @@ def readCell(path):
 				rects.append(Rect(args[1], args[2], [int(arg) for arg in args[3:7]], hint, isInput, isOutput))
 	return Cell(name, kind, bbox, rects)
 
-def writeLayerMap(path, conf):
-	layers = zip(conf["gds"]["layers"], conf["gds"]["major"], conf["gds"]["minor"])
-	with open(path, "w") as fptr:
-		for layer in layers:
-			name = layer[0]
-			purpose = ""
-			if "." in name:
-				name, purpose = layer[0].rsplit(".", 1)
-			if "via" in name and purpose in ["drawing", "dg", "drw"]:
-				print(f"{name} VIA {layer[1]} {layer[2]}", file=fptr)
-			elif purpose in ["drawing", "dg", "drw"]:
-				print(f"{name} LEFOBS {layer[1]} {layer[2]}", file=fptr)
-			elif purpose in ["label", "ll", "lbl"]:
-				print(f"NAME {name}/PINNAME {layer[1]} {layer[2]}", file=fptr)
-				print(f"NAME {name}/PIN {layer[1]} {layer[2]}", file=fptr)
-				print(f"NAME {name}/LEFPINNAME {layer[1]} {layer[2]}", file=fptr)
-				print(f"NAME {name}/LEFPIN {layer[1]} {layer[2]}", file=fptr)
-			elif purpose in ["net", "nt"]:
-				print(f"{name} NET {layer[1]} {layer[2]}", file=fptr)
-			elif purpose in ["pin", "pin1", "pn"]:
-				print(f"{name} PIN,LEFPIN {layer[1]} {layer[2]}", file=fptr)
-			elif purpose in ["blockage", "be", "blo"]:
-				print(f"{name} BLOCKAGE {layer[1]} {layer[2]}", file=fptr)
-			if "prb" in name.lower():
-				print(f"DIEAREA ALL {layer[1]} {layer[2]}", file=fptr)
-
 def writeGDS(path, conf, cell):
 	if not hasGDSTK:
 		print("skipping gds, enable gds support by installing gdstk:")
@@ -175,22 +156,15 @@ def writeGDS(path, conf, cell):
 	
 	bndry = None
 	for layer, idx in layers.items():
-		name = layer
-		purpose = ""
-		if "." in name:
-			name, purpose = layer.rsplit(".", 1)
+		name, purpose = splitLayerID(layer)
 		if (name == "text" and purpose in ["drawing", "dg", "drw"]) or name == "outline" or name == "areaid_sc":
 			gdsCell.add(gdstk.rectangle((cell.bbox[0], cell.bbox[1]), (cell.bbox[2], cell.bbox[3]), layer=idx[0], datatype=idx[1]))
 	for rect in cell.rects:
 		gds = queryGDS(conf, rect.layer)
 		labelWritten = False
-		for layerName, bloat in gds:
-			name = layerName
-			purpose = ""
-			if "." in name:
-				name, purpose = layerName.rsplit(".", 1)
-			if layerName in layers:
-				idx = layers[layerName]
+		for layer, bloat in gds:
+			if layer in layers:
+				idx = layers[layer]
 				gdsCell.add(gdstk.rectangle(((rect.bounds[0]-bloat), (rect.bounds[1]-bloat)), ((rect.bounds[2]+bloat), (rect.bounds[3]+bloat)), layer=idx[0], datatype=idx[1]))
 				if rect.label and rect.label != "#" and not labelWritten:
 					gdsCell.add(gdstk.Label(rect.label, ((rect.bounds[0] + rect.bounds[2])/2, (rect.bounds[1] + rect.bounds[3])/2), layer=idx[0], texttype=idx[1]))
@@ -199,21 +173,6 @@ def writeGDS(path, conf, cell):
 	lib.write_gds(path)
 
 def writeLEF(path, conf, cell):
-	# See https://github.com/KLayout/klayout/blob/766dd675c11d98b2461c448035197f6e934cb497/src/plugins/streamers/lefdef/db_plugin/dbLEFDEFImporter.cc#L1085
-	# Purpose Name = Placement Code
-  # LEFPIN       = LEFPIN
-	# PIN          = PIN
-	# LEFPINNAME   = LEFLABEL
-	# PINNAME      = LABEL
-	# FILL         = FILL
-	# FILLOPC      = FILLOPC
-	# LEFOBS       = OBS
-	# SPNET        = SPNET
-	# NET          = NET
-	# VIA          = VIA
-	# BLOCKAGE     = BLK
-	# ALL = [LEFPIN, PIN, FILL, FILLOPC, OBS, SPNET, NET, VIA]
-
 	scale = conf["general"]["scale"]
 	numMetals = conf["general"]["metals"]
 	with open(path, "w") as fptr:
@@ -263,10 +222,7 @@ def writeLEF(path, conf, cell):
 				print("\t\tPORT", file=fptr)
 				gds = queryGDS(conf, rect.layer)
 				for layer, bloat in gds:
-					name = layer
-					purpose = ""
-					if "." in name:
-						name, purpose = layer.rsplit(".", 1)
+					name, purpose = splitLayerID(layer)
 					print(f"\t\t\tLAYER {name} ;", file=fptr)
 					print(f"\t\t\t\tRECT {(rect.bounds[0]-bloat)*scale} {(rect.bounds[1]-bloat)*scale} {(rect.bounds[2]+bloat)*scale} {(rect.bounds[3]+bloat)*scale} ;", file=fptr)
 				print("\t\tEND", file=fptr)
@@ -277,10 +233,7 @@ def writeLEF(path, conf, cell):
 			#if not rect.isInput and not rect.isOutput:
 			gds = queryGDS(conf, rect.layer)
 			for layer, bloat in gds:
-				name = layer
-				purpose = ""
-				if "." in name:
-					name, purpose = layer.rsplit(".", 1)
+				name, purpose = splitLayerID(layer)
 				print(f"\t\tLAYER {name} ;", file=fptr)
 				print(f"\t\t\tRECT {(rect.bounds[0]-bloat)*scale} {(rect.bounds[1]-bloat)*scale} {(rect.bounds[2]+bloat)*scale} {(rect.bounds[3]+bloat)*scale} ;", file=fptr)
 		print("\tEND", file=fptr)
@@ -290,7 +243,6 @@ def writeLEF(path, conf, cell):
 def print_help():
 	print("Usage: rect2lef.py [options] <input.rect>")
 	print("\t-T<tech>\tidentify the technology used for this translation.")
-	print("\t-lm\temit the layermap")
 	print("\t-gds\twrite the gds.")
 
 if __name__ == "__main__":
@@ -298,7 +250,6 @@ if __name__ == "__main__":
 		print_help()
 	else:
 		rectPath = None
-		doLM = False
 		doGDS = False
 		techName = "sky130"
 		actHome = os.environ.get('ACT_HOME', "/opt/cad")
@@ -306,8 +257,6 @@ if __name__ == "__main__":
 			if arg[0] == '-':
 				if arg[1] == 'T':
 					techName = arg[2:]
-				elif arg == "-lm":
-					doLM = True
 				elif arg == "-gds":
 					doGDS = True
 				else:
@@ -322,7 +271,5 @@ if __name__ == "__main__":
 		if rectPath:
 			cell = readCell(rectPath)
 			writeLEF(cell.name + ".lef", conf, cell)
-		if doLM:
-			writeLayerMap("layermap.txt", conf)
 		if doGDS:
 			writeGDS(cell.name + ".gds", conf, cell) 
