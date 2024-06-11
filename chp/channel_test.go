@@ -5,7 +5,7 @@ import (
 	"testing"
 	"github.com/stretchr/testify/assert"
 
-	"git.broccolimicro.io/Broccoli/pr.git/chp/param"
+	"github.com/broccolimicro/pr.git/chp/param"
 )
 
 func TestUnitSendRecv(t *testing.T) {

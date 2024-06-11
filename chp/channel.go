@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	
-	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
+	"github.com/broccolimicro/pr.git/chp/timing"
 )
 
 type Void struct {}
@@ -538,7 +538,8 @@ func (c *channel[T]) Valid() bool {
 
 func (s *sender[T]) SetGlobals(g Globals) {
 	if s.g != nil {
-		panic(Misconfigured)
+		return
+		//panic(Misconfigured)
 	}
 	s.g = g
 	if s.c.name != "" {
@@ -673,7 +674,7 @@ func (s *sender[T]) Close() error {
 
 func (r *receiver[T]) SetGlobals(g Globals) {
 	if r.g != nil {
-		panic(Misconfigured)
+		return
 	}
 	r.g = g
 	if r.c.name != "" {

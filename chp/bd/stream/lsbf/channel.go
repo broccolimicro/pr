@@ -3,10 +3,10 @@ package lsbf
 import (
 	"math/big"
 
-	"git.broccolimicro.io/Broccoli/pr.git/chp"
-	"git.broccolimicro.io/Broccoli/pr.git/chp/timing"
-	"git.broccolimicro.io/Broccoli/pr.git/chp/bd"
-	"git.broccolimicro.io/Broccoli/pr.git/chp/bd/stream"
+	"github.com/broccolimicro/pr.git/chp"
+	"github.com/broccolimicro/pr.git/chp/timing"
+	"github.com/broccolimicro/pr.git/chp/bd"
+	"github.com/broccolimicro/pr.git/chp/bd/stream"
 )
 
 /******************************
