@@ -3,7 +3,7 @@ package chp
 import (
 	"errors"
 
-	"github.com/broccolimicro/pr.git/chp/timing"
+	"github.com/broccolimicro/pr/chp/timing"
 )
 
 func Connect[T interface{}](g Globals, L Receiver[T], R Sender[T]) {

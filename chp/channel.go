@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	
-	"github.com/broccolimicro/pr.git/chp/timing"
+	"github.com/broccolimicro/pr/chp/timing"
 )
 
 type Void struct {}

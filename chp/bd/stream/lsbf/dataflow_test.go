@@ -4,9 +4,9 @@ import (
 	"testing"
 	"math"
 
-	"github.com/broccolimicro/pr.git/chp"
-	"github.com/broccolimicro/pr.git/chp/bd/stream"
-	"github.com/broccolimicro/pr.git/chp/param"
+	"github.com/broccolimicro/pr/chp"
+	"github.com/broccolimicro/pr/chp/bd/stream"
+	"github.com/broccolimicro/pr/chp/param"
 	
 	"github.com/stretchr/testify/assert"
 )

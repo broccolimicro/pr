@@ -13,7 +13,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/broccolimicro/pr.git/chp/timing"
+	"github.com/broccolimicro/pr/chp/timing"
 )
 
 var Misconfigured = errors.New("Misconfigured")

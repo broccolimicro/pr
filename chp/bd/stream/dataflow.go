@@ -3,9 +3,9 @@ package stream
 import (
 	"errors"
 
-	"github.com/broccolimicro/pr.git/chp"
-	"github.com/broccolimicro/pr.git/chp/timing"
-	"github.com/broccolimicro/pr.git/chp/bd"
+	"github.com/broccolimicro/pr/chp"
+	"github.com/broccolimicro/pr/chp/timing"
+	"github.com/broccolimicro/pr/chp/bd"
 )
 
 func Buffer[T interface{}](g chp.Globals, L Receiver[T], R Sender[T]) {

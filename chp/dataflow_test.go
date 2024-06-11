@@ -4,7 +4,7 @@ import (
 	"testing"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/broccolimicro/pr.git/chp/param"
+	"github.com/broccolimicro/pr/chp/param"
 )
 
 func TestIntegrationConnect(t *testing.T) {

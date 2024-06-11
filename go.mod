@@ -1,4 +1,4 @@
-module github.com/broccolimicro/pr.git
+module github.com/broccolimicro/pr
 
 go 1.19
 

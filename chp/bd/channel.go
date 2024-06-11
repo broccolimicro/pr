@@ -1,8 +1,8 @@
 package bd
 
 import (
-	"github.com/broccolimicro/pr.git/chp"
-	"github.com/broccolimicro/pr.git/chp/timing"
+	"github.com/broccolimicro/pr/chp"
+	"github.com/broccolimicro/pr/chp/timing"
 )
 
 type Token[ctype, dtype interface{}] struct {
