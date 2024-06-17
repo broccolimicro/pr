@@ -424,7 +424,7 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 				name  = name,
 				wires = wires,
 				chp   = chp,
-				init = " init" if vdir == '?' else "")
+				init = " zero" if vdir == '?' else "")
 		]
 	else:
 		return [
@@ -440,7 +440,7 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 				name  = name,
 				wires = wires,
 				chp   = chp,
-				init = " init" if vdir == '?' else "")
+				init = " zero" if vdir == '?' else "")
 		]
 
 def print_test_act(path, test, proc):
