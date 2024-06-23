@@ -176,7 +176,7 @@ class Defproc:
 		return "; ".join([str(arg.vtype) + " " + arg.name for arg in self.args])
 
 	def arglist(self):
-		return ",".join([arg.name for arg in self.args])	
+		return ",".join([arg.name.split('[')[0] for arg in self.args])	
 
 def parseArgs(line):
 	result = []
@@ -394,15 +394,19 @@ def relativeCwd(root):
 # main
 ###############################################################################
 
-def emit_chan(name, proto, rails, chp, vdir):
+def declare_chan(name, proto, req, ack, chp, vdir):
 	return [
-		"bundle dut.{name}.d[0:{rails}]".format(
+		"bundle dut.{req}".format(
 			name  = name,
-			rails = rails),
-		"channel dut.{name} {proto} d[0:{rails}]".format(
+			req = req)
+	]
+
+def emit_chan(name, proto, req, ack, chp, vdir):
+	return [
+		"channel dut.{name} {proto} dut.{req}".format(
 			name  = name,
 			proto = proto,
-			rails = rails),
+			req = req) + (" dut.{ack}".format(ack=ack) if ack else ""),
 		"{kind} dut.{name} request {chp}.dat".format(
 			kind = "inject" if vdir == '?' else "expect",
 			name = name,
@@ -424,7 +428,7 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 				name  = name,
 				wires = wires,
 				chp   = chp,
-				init = " zero" if vdir == '?' else "")
+				init = " init" if vdir == '?' else "")
 		]
 	else:
 		return [
@@ -440,7 +444,7 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 				name  = name,
 				wires = wires,
 				chp   = chp,
-				init = " zero" if vdir == '?' else "")
+				init = " init" if vdir == '?' else "")
 		]
 
 def print_test_act(path, test, proc):
@@ -455,7 +459,7 @@ def print_test_act(path, test, proc):
 		print("\t[ DUT ->", file=fptr)
 		print("\t" + test.proc.typestr() + " dut;", file=fptr)
 		for arg in proc.args:
-			print("\t" + arg.name + " = dut." + arg.name + ";", file=fptr)
+			print("\t" + arg.name.split('[')[0] + " = dut." + arg.name.split('[')[0] + ";", file=fptr)
 		print("\t]", file=fptr)
 		print("}\n", file=fptr)
 
@@ -463,6 +467,8 @@ def print_test_act(path, test, proc):
 			print(arg.inst(), file=fptr)
 			if val.name and val.vdir == '!' and not val.clk:
 				print(arg.sink(), file=fptr)
+			elif not val.name.desc and not val.vdir and val.clk:
+				print("{} = {};".format(arg.name, val.clk), file=fptr)
 
 		print("testbench dut(" + proc.arglist() + ");", file=fptr)
 
@@ -481,13 +487,24 @@ set_reset g.Reset
 		channels = []
 		for arg, val in zip(proc.args, test.proc.args):
 			if val.name:
+				if arg.vtype.name == "e1of":
+					channels += declare_chan(arg.name, "e", arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), "", val.name, val.vdir)
+				elif arg.vtype.name == "c1of":
+					channels += declare_chan(arg.name, ("e" if val.posedge else "a"), arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), val.clk, val.name, val.vdir)
+				elif arg.vtype.name == "bus2_e1of":
+					channels += declare_chan(arg.name + ".c", "e", arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), "", val.name.members[0], val.vdir)
+				elif arg.vtype.name == "bus2_c1of":
+					channels += declare_chan(arg.name + ".c", ("e" if val.posedge else "a"), arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), val.clk, val.name.members[0], val.vdir)
+
+		for arg, val in zip(proc.args, test.proc.args):
+			if val.name:
 				if arg.vtype.name == "bool":
 					value = str(val.name)
 					if value == "true":
 						channels += ["set dut." + arg.name + " 1"]
 					elif value == "false":
 						channels += ["set dut." + arg.name + " 0"]
-					elif val.clk:
+					elif val.name.desc and val.clk and len(val.name.members) > 1:
 						if len(arg.vtype.params) > 0:
 							channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, False, val.name.members[1], val.vdir)
 						else:
@@ -504,10 +521,15 @@ set_reset g.Reset
 						else:
 							channels += emit_bus(arg.name, val.clk, 0, val.posedge, True, val.name, val.vdir)
 				elif arg.vtype.name == "e1of":
-					channels += emit_chan(arg.name, "e", arg.vtype.params[0], val.name, val.vdir)
+					channels += emit_chan(arg.name, "e", arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), "", val.name, val.vdir)
+				elif arg.vtype.name == "c1of":
+					channels += emit_chan(arg.name, ("e" if val.posedge else "a"), arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), val.clk, val.name, val.vdir)
 				elif arg.vtype.name == "bus2_e1of":
-					channels += emit_chan(arg.name + ".c", "e", arg.vtype.params[1], val.name.members[0], val.vdir)
+					channels += emit_chan(arg.name + ".c", "e", arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), "", val.name.members[0], val.vdir)
 					channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
+				elif arg.vtype.name == "bus2_c1of":
+					channels += emit_chan(arg.name + ".c", ("e" if val.posedge else "a"), arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), val.clk, val.name.members[0], val.vdir)
+					channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, True, val.name.members[1], val.vdir)
 
 		print("\n".join(channels), file=fptr)
 
