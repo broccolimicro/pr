@@ -261,17 +261,19 @@ class Record:
 							print(value, file=argptr)
 
 class ChpTerm:
-	def __init__(self, name, vdir, clk="", posedge=True):
+	def __init__(self, name, vdir, clk="", posedge=True, ack=False):
 		self.name = name
 		self.vdir = vdir
 		self.clk = clk
 		self.posedge = posedge
+		self.ack = ack
 
 def parseChpTerms(line):
 	result = []
 	for arg in line.split(","):
 		arg = arg.strip()
 		vdir = ""
+		ack = False
 		clk = ""
 		posedge = True
 		if '@' in arg:
@@ -286,8 +288,12 @@ def parseChpTerms(line):
 		if len(arg) > 0 and arg[-1] in "?!":
 			vdir = arg[-1]
 			arg = arg[0:-1]
+		elif len(arg) > 1 and arg[-2] in "?!" and arg[-1] in "+-":
+			vdir = arg[-2]
+			ack = arg[-1] == "+"
+			arg = arg[0:-2]
 		
-		result.append(ChpTerm(Record(arg), vdir, clk, posedge))
+		result.append(ChpTerm(Record(arg), vdir, clk, posedge, ack))
 	return result
 
 def parseType(line):
@@ -523,12 +529,12 @@ set_reset g.Reset
 				elif arg.vtype.name == "e1of":
 					channels += emit_chan(arg.name, "e", arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), "", val.name, val.vdir)
 				elif arg.vtype.name == "c1of":
-					channels += emit_chan(arg.name, ("e" if val.posedge else "a"), arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), val.clk, val.name, val.vdir)
+					channels += emit_chan(arg.name, ("a" if val.ack else "e"), arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), val.clk, val.name, val.vdir)
 				elif arg.vtype.name == "bus2_e1of":
 					channels += emit_chan(arg.name + ".c", "e", arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), "", val.name.members[0], val.vdir)
 					channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
 				elif arg.vtype.name == "bus2_c1of":
-					channels += emit_chan(arg.name + ".c", ("e" if val.posedge else "a"), arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), val.clk, val.name.members[0], val.vdir)
+					channels += emit_chan(arg.name + ".c", ("a" if val.ack else "e"), arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), val.clk, val.name.members[0], val.vdir)
 					channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, True, val.name.members[1], val.vdir)
 
 		print("\n".join(channels), file=fptr)
