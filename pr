@@ -9,16 +9,28 @@ import operator
 import copy
 import pprint
 
+# Helper Functions
+###############################################################################
+
+def projectRoot():
+	path = os.getcwd()
+	while path and path != "/" and not os.path.exists(path + "/go.mod"):
+		path = os.path.dirname(path)
+	return path
+
+def relativeCwd(root):
+	return os.path.relpath(os.getcwd(), start=root)
+
 # Expression Parser
 ###############################################################################
 
-class Node:
+class Token:
 	def __init__(self, token_type, value=None):
 		self.token_type = token_type
 		self.value = value
 		self.children = []
 
-def lexical_analysis(s):
+def lexExp(s):
 	tokens = []
 	curr = None
 	for c in s:
@@ -27,7 +39,7 @@ def lexical_analysis(s):
 				tokens.append(curr)
 				curr = None
 
-			tokens.append(Node(c, value=c))
+			tokens.append(Token(c, value=c))
 		elif (curr == None or curr.token_type != 'v') and re.match(r'\d', c):
 			if curr != None and curr.token_type != 'n':
 				tokens.append(curr)
@@ -36,7 +48,7 @@ def lexical_analysis(s):
 			if curr != None:
 				curr.value += c
 			else:
-				curr = Node('n', value=c)
+				curr = Token('n', value=c)
 		elif ((curr == None or curr.token_type != 'v') and re.match(r'[A-Za-z_]', c)) or (curr != None and curr.token_type == 'v' and re.match(r'[A-Za-z0-9_]', c)):
 			if curr != None and curr.token_type != 'v':
 				tokens.append(curr)
@@ -45,58 +57,58 @@ def lexical_analysis(s):
 			if curr != None:
 				curr.value += c
 			else:
-				curr = Node('v', value=c)
+				curr = Token('v', value=c)
 		else:
 			raise Exception('Invalid token: {}'.format(c))
 	if curr != None:
 		tokens.append(curr)
-	tokens.append(Node('e'))
+	tokens.append(Token('e'))
 	return tokens
 
-def match(tokens, token):
+def expectToken(tokens, token):
 	if tokens[0].token_type == token:
 		return tokens.pop(0)
 	else:
 		raise Exception('Invalid syntax on token {}'.format(tokens[0].token_type))
 
-def parse_e(tokens):
-	left_node = parse_e2(tokens)
+def parseExpAddSub(tokens):
+	left_node = parseExpMulDiv(tokens)
 
 	while tokens[0].token_type in ['+', '-']:
 		node = tokens.pop(0)
 		node.children.append(left_node)
-		node.children.append(parse_e2(tokens))
+		node.children.append(parseExpMulDiv(tokens))
 		left_node = node
 
 	return left_node
 
-def parse_e2(tokens):
-	left_node = parse_e3(tokens)
+def parseExpMulDiv(tokens):
+	left_node = parseExpParens(tokens)
 
 	while tokens[0].token_type in ['*', '/']:
 		node = tokens.pop(0)
 		node.children.append(left_node)
-		node.children.append(parse_e3(tokens))
+		node.children.append(parseExpParens(tokens))
 		left_node = node
 
 	return left_node
 
-def parse_e3(tokens):
+def parseExpParens(tokens):
 	if tokens[0].token_type == 'n':
 		return tokens.pop(0)
 	elif tokens[0].token_type == 'v':
 		return tokens.pop(0)
 
-	match(tokens, '(')
-	expression = parse_e(tokens)
-	match(tokens, ')')
+	expectToken(tokens, '(')
+	expression = parseExpAddSub(tokens)
+	expectToken(tokens, ')')
 
 	return expression
 
-def parse(inputstring):
-	tokens = lexical_analysis(inputstring)
-	ast = parse_e(tokens)
-	match(tokens, 'e')
+def parseExp(inputstring):
+	tokens = lexExp(inputstring)
+	ast = parseExpAddSub(tokens)
+	expectToken(tokens, 'e')
 	return ast
 
 operations = {
@@ -106,27 +118,27 @@ operations = {
 	'/': operator.truediv
 }
 
-def compute(expr, params):
+def evalExp(expr, params):
 	node = expr
 	if isinstance(expr, str):
-		node = parse(expr)
+		node = parseExp(expr)
 	if node.token_type == 'n':
 		return int(node.value)
 	elif node.token_type == 'v':
 		if node.value in params:
 			return int(params[node.value])
-	left_result = compute(node.children[0], params)
-	right_result = compute(node.children[1], params)
+	left_result = evalExp(node.children[0], params)
+	right_result = evalExp(node.children[1], params)
 	operation = operations[node.token_type]
 	return operation(left_result, right_result)
 
-# Test Parser
+# Act Parser
 ###############################################################################
 
-class Deftype:
+class ActType:
 	def __init__(self, name, params):
-		self.name = name
-		self.params = params
+		self.name = name     # str
+		self.params = params # list(int)
 
 	def __str__(self):
 		if self.params:
@@ -136,29 +148,144 @@ class Deftype:
 
 	def flatten(self, params):
 		for i, param in enumerate(self.params):
-			self.params[i] = str(compute(param, params))
+			self.params[i] = str(evalExp(param, params))
 
-class Defarg:
-	def __init__(self, name, vtype):
-		self.name = name
-		self.vtype = vtype
+	def isBundledData(self):
+		return self.name.startswith("bus2_") or self.name.startswith("bus_")
 
-	def sink(self):
-		vtype = copy.deepcopy(self.vtype)
-		name = self.name
-		connect = self.name
-		if self.vtype.name == "bus2_e1of":
-			vtype.name = "e1of"
-			vtype.params = [vtype.params[1]]
-			connect += ".c"
 
-		vtype.params.append(6)
-		return "sink_" + str(vtype) + " sink_" + name + "(g, " + connect + ");"
+class ActArg:
+	def __init__(self, name, size, vtype):
+		self.name = name   # str
+		self.size = size   # list(int)
+		self.vtype = vtype # ActType
+
+	def flatten(self, params):
+		self.vtype.flatten(params)
+		for i, size in enumerate(self.size):
+			self.size[i] = str(evalExp(size, params))
+
+	def signalName(self):
+		result = self.name
+		if self.vtype.isBundledData():
+			result += ".c"
+		return result
+
+	def signalRails(self):
+		if self.vtype.isBundledData():
+			return self.vtype.params[1]
+		elif len(self.vtype.params) > 0:
+			return self.vtype.params[0]
+		else:
+			return 0
+
+	def index(self, i):
+		return ActArg(self.name + "[" + str(i) + "]", self.size[1:], self.vtype)
+
+	def instName(self):
+		return self.name + "".join(["[" + s + "]" for s in self.size])
 
 	def inst(self):
-		return str(self.vtype) + " " + self.name + ";"
+		return str(self.vtype) + " " + self.instName()
 
-class Defproc:
+	def count(self):
+		if len(self.size) > 0:
+			return self.size[-1]
+		return 0
+
+	def sinkType(self):
+		result = copy.deepcopy(self.vtype)
+		if result.name.startswith("bus2_"):
+			result.name = result.name[5:]
+			result.params = [result.params[1]]
+		elif result.name.startswith("bus_"):
+			result.name = result.name[4:]
+			result.params = [result.params[1]]
+		result.params.append(6)
+		return result
+
+	def sink(self):
+		lines = []
+		if "[" not in self.name:
+			lines.append("sink_{vtype} sink_{name};".format(
+				vtype = str(self.sinkType()),
+				name = self.instName(),
+			))
+		if len(self.size) > 0:
+			for i in range(0, int(self.size[0])):
+				lines += self.index(i).sink()
+		else:
+			lines.append("sink_{name}(g, {signals});".format(
+				name = self.name,
+				signals = self.signalName(),
+			))
+		return "\n".join(lines)
+
+	def emitBundle(self):
+		if len(self.size) > 0:
+			lines = []
+			for i in range(0, int(self.size[0])):
+				lines += self.index(i).emitBundle()
+			return lines
+		
+		if self.vtype.name.endswith("e1of") or self.vtype.name.endswith("eMofN") or self.vtype.name.endswith("a1of") or self.vtype.name.endswith("aMofN") or self.vtype.name.endswith("c1of") or self.vtype.name.endswith("cMofN"):
+			return ["bundle dut.{name}.d[0:{rails}]".format(
+				name  = self.signalName(),
+				rails = self.signalRails(),
+			)]
+
+		return []
+
+	def emit(self, chp):
+		if len(self.size) > 0:
+			lines = []
+			for i in range(0, int(self.size[0])):
+				lines += self.index(i).emit(chp.index(i))
+			return lines
+
+		if self.vtype.name in ["bool", "pair"]:
+			if chp.name in ["false", "true"]:
+				value = (1 if chp.name == "true" else 0)
+				if self.vtype.name == "bool":
+					return ["set dut.{name} {value}".format(name=self.name, value=value)]
+				else:
+					return [
+						"set dut.{name}.d[1] {value}".format(name=self.name, value=value),
+						"set dut.{name}.d[0] {value}".format(name=self.name, value=1-value)
+					]
+			elif chp.clk and chp.name:
+				return prsimEmitBus(self.name, chp.clk, self.count(), chp.posedge, self.vtype.name == "pair", chp.name, chp.vdir)
+			return []
+
+		protocol = ""
+		ack = chp.clk
+		posedge = chp.posedge
+		clk = chp.clk
+		if self.vtype.name.endswith("e1of") or self.vtype.name.endswith("eMofN") or self.vtype.name.endswith("ePxMofN"):
+			protocol = "e"
+			ack = ""
+			clk = self.signalName()+".e"
+			posedge = True
+		elif self.vtype.name.endswith("a1of") or self.vtype.name.endswith("aMofN") or self.vtype.name.endswith("aPxMofN"):
+			protocol = "a"
+			ack = ""
+			clk = self.signalname()+".a"
+			posedge = False
+		elif self.vtype.name.endswith("c1of") or self.vtype.name.endswith("cMofN") or self.vtype.name.endswith("cPxMofN"):
+			protocol = ("a" if chp.ack else "e")
+
+		lines = []
+		if protocol:
+			req = self.signalName() + ".d[0:{rails}]".format(rails=self.signalRails())
+			data = chp.name + ("_C" if self.vtype.isBundledData() else "")
+			lines += prsimEmitChan(self.signalName(), protocol, req, ack, data, chp.vdir)
+
+		if self.vtype.name.startswith("bus2_") or self.vtype.name.startswith("bus_"):
+			data = chp.name + ("_D" if self.vtype.isBundledData() else "")
+			lines += prsimEmitBus(self.name, clk, self.vtype.params[0], posedge, self.vtype.name.startswith("bus2_"), data, chp.vdir)
+		return lines
+
+class ActProcess:
 	def __init__(self, path, tmpl, args):
 		self.path = path
 		self.tmpl = tmpl
@@ -169,14 +296,26 @@ class Defproc:
 
 		result = copy.deepcopy(self)
 		for arg in result.args:
-			arg.vtype.flatten(params)
+			arg.flatten(params)
 		return result
 
 	def argdef(self):
-		return "; ".join([str(arg.vtype) + " " + arg.name for arg in self.args])
+		return "; ".join([arg.inst() for arg in self.args])
 
 	def arglist(self):
-		return ",".join([arg.name.split('[')[0] for arg in self.args])	
+		return ",".join([arg.name for arg in self.args])	
+
+class ActInstance:
+	def __init__(self, name, tmpl, args):
+		self.name = name
+		self.tmpl = tmpl
+		self.args = args
+
+	def test(self):
+		return self.name.replace('::', '_') + '_' + '_'.join(self.tmpl)
+
+	def typestr(self):
+		return self.name + "<" + ",".join(self.tmpl) + ">"
 
 def parseArgs(line):
 	result = []
@@ -184,26 +323,76 @@ def parseArgs(line):
 		result.append(arg.strip())
 	return result
 
-class Record:
+def parseActType(line):
+	o = line.find("<")
+	c = line.rfind(">")
+	if o != -1 and c != -1:
+		return ActType(line[0:o], parseArgs(line[o+1:c]))
+	else:
+		return ActType(line, [])
+
+def parseArray(line):
+	name = ""
+	size = []
+
+	terms = line.strip().split("[")
+	name = terms[0]
+	size = [term[0:-1] for term in terms[1:]]
+	return (name, size)
+	
+def parseActArgs(line):
+	args = []
+	for elem in line.split(";"):
+		m = re.match(r'([a-zA-Z_][a-zA-Z_0-9]*(?:<[^>]*>)?) *(.*)', elem.strip())
+		if m is not None:
+			argtype = parseActType(m.group(1).strip())
+			for arg in m.group(2).split(","):
+				name, argsize = parseArray(arg)
+				args.append(ActArg(name, argsize, argtype))
+	return args
+
+def parseActProcess():
+	processes = {}
+	for line in os.popen("find * -name '*.act' | grep -v \"test/\""):
+		path = line.strip()
+		with open(path, "r") as fptr:
+			for m in re.findall(r'(?:template\s*<([^>]*)>)?\s*(?:export\s*)?defproc\s*([A-Za-z_][A-Za-z0-9_]*)\(([^\)]*)\)', fptr.read()):
+				if m[1] != '':
+					tmpl = None
+					if m[0] != '':
+						tmpl = parseActArgs(m[0])
+					name = m[1]
+					args = parseActArgs(m[2])
+					processes[name] = ActProcess(path, tmpl, args)
+	return processes
+
+# Chp Parser
+###############################################################################
+
+class ChpStruct:
 	def __init__(self, desc):
 		desc = desc.strip()
-		self.desc = desc
 		self.name = ""
+		self.dtype = ""
 		self.members = []
-		if len(desc) > 0:
-			if '{' in desc:
-				start = desc.index('{')
-				if start > 0 and desc[start-1] == ':':
-					self.name = desc[0:start]
-				self.members = [Record(arg) for arg in desc[start+1:-1].split(" ")]
-			elif ':' in desc:
-				start = desc.index(':')
-				self.name = desc[0:start]
-				self.desc = desc[start+1:]
+		if len(desc) == 0:
+			return
+
+		structStart = desc.index('{') if '{' in desc else len(desc)
+		nameStart = desc.index(':') if ':' in desc else len(desc)
+		if nameStart < structStart and nameStart < len(desc):
+			self.name = desc[0:nameStart]
+			desc = desc[nameStart+1:]
+			structStart -= nameStart+1
+		if structStart < len(desc):
+			self.members = [ChpStruct(arg) for arg in desc[structStart+1:-1].split(" ")]
+
+		self.dtype = desc
 
 	def __str__(self):
-		return self.desc.replace('.','_')
+		return (self.name + ":" if self.name else "") + (self.dtype if self.dtype else "")
 
+	# return list of indexes into members for a particular member name
 	def addr(self, name):
 		search = name
 		sub = ""
@@ -218,6 +407,7 @@ class Record:
 
 		return []
 
+	# return a particular member given a list of indexes
 	def at(self, idx):
 		if len(idx) == 0:
 			return self
@@ -226,41 +416,7 @@ class Record:
 		else:
 			return None
 
-	def createInjectExpect(self, path, vdir):
-		if len(self.members) > 0:
-			for member in self.members:
-				member.createInjectExpect(path, vdir)
-		elif len(self.desc) > 0 and vdir:
-			cname = self.desc
-			if '.' in cname:
-				cname = cname[0:cname.index('.')]
-			chanpath = path+'/chp/top.dut.'+cname
-			if vdir == '?':
-				chanpath += '.r'
-			elif vdir == '!':
-				chanpath += '.s'
-			argpath = path+'/'+str(self)+'.dat'
-			rec = None
-			with open(chanpath, "r") as chanptr:
-				with open(argpath, "w") as argptr:
-					for i, line in enumerate(chanptr):
-						if i == 0:
-							# read the header
-							rec = Record(line[10:])
-						else:
-							inst = Record(line.split("\t")[1])
-							search = self.desc
-							if '.' in self.desc:
-								idx = self.desc.index('.')
-								search = self.desc[idx+1:]
-							value = str(inst.at(rec.addr(search)))
-							if value == "false":
-								value = 0
-							elif value == "true":
-								value = 1
-							print(value, file=argptr)
-
-class ChpTerm:
+class ChpArg:
 	def __init__(self, name, vdir, clk="", posedge=True, ack=False):
 		self.name = name
 		self.vdir = vdir
@@ -268,7 +424,10 @@ class ChpTerm:
 		self.posedge = posedge
 		self.ack = ack
 
-def parseChpTerms(line):
+	def index(self, i):
+		return ChpArg(self.name + "." + str(i), self.vdir, self.clk, self.posedge, self.ack)
+
+def parseChpArgs(line):
 	result = []
 	for arg in line.split(","):
 		arg = arg.strip()
@@ -293,55 +452,10 @@ def parseChpTerms(line):
 			ack = arg[-1] == "+"
 			arg = arg[0:-2]
 		
-		result.append(ChpTerm(Record(arg), vdir, clk, posedge, ack))
+		result.append(ChpArg(arg, vdir, clk, posedge, ack))
 	return result
 
-def parseType(line):
-	o = line.find("<")
-	c = line.rfind(">")
-	if o != -1 and c != -1:
-		return Deftype(line[0:o], parseArgs(line[o+1:c]))
-	else:
-		return Deftype(line, [])
-
-def parseDefargs(line):
-	args = []
-	for elem in line.split(";"):
-		m = re.match(r'([a-zA-Z_][a-zA-Z_0-9]*(?:<[^>]*>)?) *(.*)', elem.strip())
-		if m is not None:
-			argtype = parseType(m.group(1).strip())
-			for arg in m.group(2).split(","):
-				args.append(Defarg(arg.strip(), argtype))
-	return args
-
-def findProcesses():
-	processes = {}
-	for line in os.popen("find * -name '*.act' | grep -v \"test/\""):
-		path = line.strip()
-		with open(path, "r") as fptr:
-			for m in re.findall(r'(?:template\s*<([^>]*)>)?\s*(?:export\s*)?defproc\s*([A-Za-z_][A-Za-z0-9_]*)\(([^\)]*)\)', fptr.read()):
-				if m[1] != '':
-					tmpl = None
-					if m[0] != '':
-						tmpl = parseDefargs(m[0])
-					name = m[1]
-					args = parseDefargs(m[2])
-					processes[name] = Defproc(path, tmpl, args)
-	return processes
-
-class Instance:
-	def __init__(self, name, tmpl, args):
-		self.name = name
-		self.tmpl = tmpl
-		self.args = args
-
-	def test(self):
-		return self.name.replace('::', '_') + '_' + '_'.join(self.tmpl)
-
-	def typestr(self):
-		return self.name + "<" + ",".join(self.tmpl) + ">"
-
-class Deftest:
+class ChpTest:
 	def __init__(self, proc, chptest):
 		self.proc = proc
 		self.chptest = chptest
@@ -371,43 +485,21 @@ class Deftest:
 		os.system('mkdir -p \'' + path + '\'')
 		print(cmd)
 		os.system(cmd)
-
-		for arg in self.proc.args:
-			arg.name.createInjectExpect(path, arg.vdir)
 		
 		return path
 
-def findTests():
+def parseChpTest():
 	tests = []
 	for line in os.popen("find * -name '*.act' | xargs grep -rh \"^//.*TestUnit\""):
 		m = re.match(r'//\s*([^<]*)<([^>]*)>\(([^\)]*)\):(.*)', line)
 		# TODO(edward.bingham) add support for multiple data streams for a single channel
-		tests.append(Deftest(Instance(m.group(1), parseArgs(m.group(2)), parseChpTerms(m.group(3))), m.group(4).strip().split(" ")))
+		tests.append(ChpTest(ActInstance(m.group(1), parseArgs(m.group(2)), parseChpArgs(m.group(3))), m.group(4).strip().split(" ")))
 	return tests
 
-# Generator
+# Test Generator
 ###############################################################################
 
-def projectRoot():
-	path = os.getcwd()
-	while path and path != "/" and not os.path.exists(path + "/go.mod"):
-		path = os.path.dirname(path)
-	return path
-
-def relativeCwd(root):
-	return os.path.relpath(os.getcwd(), start=root)
-
-# main
-###############################################################################
-
-def declare_chan(name, proto, req, ack, chp, vdir):
-	return [
-		"bundle dut.{req}".format(
-			name  = name,
-			req = req)
-	]
-
-def emit_chan(name, proto, req, ack, chp, vdir):
+def prsimEmitChan(name, proto, req, ack, chp, vdir):
 	return [
 		"channel dut.{name} {proto} dut.{req}".format(
 			name  = name,
@@ -419,7 +511,7 @@ def emit_chan(name, proto, req, ack, chp, vdir):
 			chp  = chp)
 	]
 
-def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
+def prsimEmitBus(name, clk, wires, posedge, pair, chp, vdir):
 	if int(wires) > 0:
 		return [
 			"clocked_bus dut.{name}.d[0:{wires}] dut.{clk} {edge}{pair}{half}".format(
@@ -453,7 +545,71 @@ def emit_bus(name, clk, wires, posedge, pair, chp, vdir):
 				init = " init" if vdir == '?' else "")
 		]
 
-def print_test_act(path, test, proc):
+def openFileStruct(path, chp, name=""):
+	if len(chp.name) > 0:
+		if len(name) > 0:
+			name += "_"
+		name += chp.name
+
+	if len(chp.members) > 0:
+		result = []
+		for member in chp.members:
+			result.append(openFileStruct(path, member, name))
+		return result
+
+	if len(name) > 0:	
+		return open("{path}/{name}.dat".format(path=path,name=name), "w")
+
+	return None
+
+def closeFileStruct(files):
+	for file in files:
+		if isinstance(file, list):
+			closeFileStruct(file)
+		else:
+			file.close()
+
+def writeFileStruct(files, values):
+	if len(values.members) > 0:
+		for file, value in zip(files, values.members):
+			writeFileStruct(file, value)
+		return
+	
+	value = str(values)
+	if value == "false":
+		value = 0
+	elif value == "true":
+		value = 1
+	print(value, file=files)
+
+
+# str, ActArg, ChpArg
+def createInjectExpect(path, act, chp):
+	if len(act.size) > 0:
+		for i in range(0, int(act.size[0])):
+			createInjectExpect(path, act.index(i), chp.index(i))
+		return
+	
+	elif chp.name and chp.vdir:
+		chanpath = "{path}/chp/top.dut.{name}.{recv}".format(
+			path=path,
+			name=chp.name,
+			recv=("r" if chp.vdir == '?' else "s"),
+		)
+		rec = None
+		files = None
+		with open(chanpath, "r") as chanptr:
+			for i, line in enumerate(chanptr):
+				if i == 0:
+					# read the header
+					rec = ChpStruct(line[10:])
+					rec.name = chp.name
+					files = openFileStruct(path, rec)
+				else:
+					inst = ChpStruct(line.split("\t")[1])
+					writeFileStruct(files, inst)
+
+def emitTestAct(path, test, proc):
 	with open(path + "/test.act", "w") as fptr:
 		print("import \"globals.act\";", file=fptr)
 		print("import \"" + proc.path + "\";", file=fptr)
@@ -470,15 +626,15 @@ def print_test_act(path, test, proc):
 		print("}\n", file=fptr)
 
 		for arg, val in zip(proc.args, test.proc.args):
-			print(arg.inst(), file=fptr)
+			print(arg.inst() + ";", file=fptr)
 			if val.name and val.vdir == '!' and not val.clk:
 				print(arg.sink(), file=fptr)
-			elif not val.name.desc and not val.vdir and val.clk:
+			elif not val.name and not val.vdir and val.clk:
 				print("{} = {};".format(arg.name, val.clk), file=fptr)
 
 		print("testbench dut(" + proc.arglist() + ");", file=fptr)
 
-def print_prsim_rc(path, name, test, proc, xyce = False):
+def emitPrsimRc(path, name, test, proc, xyce = False):
 	with open(path + "/" + name, "w") as fptr:
 		print("initialize", file=fptr)
 		if xyce:
@@ -491,51 +647,12 @@ set_reset g.Reset
 """, file=fptr)
 
 		channels = []
-		for arg, val in zip(proc.args, test.proc.args):
-			if val.name:
-				if arg.vtype.name == "e1of":
-					channels += declare_chan(arg.name, "e", arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), "", val.name, val.vdir)
-				elif arg.vtype.name == "c1of":
-					channels += declare_chan(arg.name, ("e" if val.posedge else "a"), arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), val.clk, val.name, val.vdir)
-				elif arg.vtype.name == "bus2_e1of":
-					channels += declare_chan(arg.name + ".c", "e", arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), "", val.name.members[0], val.vdir)
-				elif arg.vtype.name == "bus2_c1of":
-					channels += declare_chan(arg.name + ".c", ("e" if val.posedge else "a"), arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), val.clk, val.name.members[0], val.vdir)
+		for arg in proc.args:
+			channels += arg.emitBundle()
 
 		for arg, val in zip(proc.args, test.proc.args):
 			if val.name:
-				if arg.vtype.name == "bool":
-					value = str(val.name)
-					if value == "true":
-						channels += ["set dut." + arg.name + " 1"]
-					elif value == "false":
-						channels += ["set dut." + arg.name + " 0"]
-					elif val.name.desc and val.clk and len(val.name.members) > 1:
-						if len(arg.vtype.params) > 0:
-							channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, False, val.name.members[1], val.vdir)
-						else:
-							channels += emit_bus(arg.name, val.clk, 0, val.posedge, False, val.name.members[1], val.vdir)
-				elif arg.vtype.name == "pair":
-					value = str(val.name)
-					if value == "true":
-						channels += ["set dut." + arg.name + ".d[1] 1", "set dut." + arg.name + ".d[0] 0"]
-					elif value == "false":
-						channels += ["set dut." + arg.name + ".d[1] 0", "set dut." + arg.name + ".d[0] 1"]
-					elif val.clk:
-						if len(arg.vtype.params) > 0:
-							channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, True, val.name, val.vdir)
-						else:
-							channels += emit_bus(arg.name, val.clk, 0, val.posedge, True, val.name, val.vdir)
-				elif arg.vtype.name == "e1of":
-					channels += emit_chan(arg.name, "e", arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), "", val.name, val.vdir)
-				elif arg.vtype.name == "c1of":
-					channels += emit_chan(arg.name, ("a" if val.ack else "e"), arg.name + ".d[0:{rails}]".format(rails=arg.vtype.params[0]), val.clk, val.name, val.vdir)
-				elif arg.vtype.name == "bus2_e1of":
-					channels += emit_chan(arg.name + ".c", "e", arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), "", val.name.members[0], val.vdir)
-					channels += emit_bus(arg.name, arg.name + ".c.e", arg.vtype.params[0], True, True, val.name.members[1], val.vdir)
-				elif arg.vtype.name == "bus2_c1of":
-					channels += emit_chan(arg.name + ".c", ("a" if val.ack else "e"), arg.name + ".c.d[0:{rails}]".format(rails=arg.vtype.params[1]), val.clk, val.name.members[0], val.vdir)
-					channels += emit_bus(arg.name, val.clk, arg.vtype.params[0], val.posedge, True, val.name.members[1], val.vdir)
+				channels += arg.emit(val)
 
 		print("\n".join(channels), file=fptr)
 
@@ -578,13 +695,13 @@ set g.sReset 0""", file=fptr)
 			print("cycle", file=fptr)
 
 
-def pr_test():
+def emitTest():
 	root = projectRoot()
 	if root == "/":
 		print("pr test: go.mod file not found in current directory or any parent directory")
 
-	processes = findProcesses()
-	tests = findTests()
+	processes = parseActProcess()
+	tests = parseChpTest()
 	
 	for test in tests:
 		name = test.proc.name
@@ -601,11 +718,16 @@ def pr_test():
 			if proc.path.startswith("prs/"):
 				proc.path = proc.path[4:]
 
-			print_test_act(path, test, proc)
+			for arg, val in zip(proc.args, test.proc.args):
+				createInjectExpect(path, arg, val)
 
-			print_prsim_rc(path, "prsim.rc", test, proc, False)
-			print_prsim_rc(path, "xyce.rc", test, proc, True)
+			emitTestAct(path, test, proc)
 
+			emitPrsimRc(path, "prsim.rc", test, proc, False)
+			emitPrsimRc(path, "xyce.rc", test, proc, True)
+
+# main
+###############################################################################
 if __name__ == "__main__":
 	tech = "sky130"
 	if len(sys.argv) > 1:
@@ -616,7 +738,7 @@ if __name__ == "__main__":
 		elif sys.argv[1] == "vendor":
 			os.system("vend")
 		elif sys.argv[1] == "test":
-			pr_test()
+			emitTest()
 		elif sys.argv[1] == "sim":
 			os.system("prsim " + " ".join([shlex.quote(arg) for arg in sys.argv[2:]]))
 		elif sys.argv[1] == "view":
