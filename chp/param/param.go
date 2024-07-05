@@ -4,11 +4,12 @@ import (
 	"strconv"
 	"os"
 	"strings"
+	"runtime"
 )
 
 func Out() string {
 	var pc []uintptr
-	callers = runtime.Callers(1, pc)
+	callers := runtime.Callers(1, pc)
 	for i := 0; i < callers; i++ {
 		name := runtime.FuncForPC(pc[i]).Name()
 		if strings.HasPrefix(name, "TestUnit") {
@@ -20,12 +21,7 @@ func Out() string {
 }
 
 func Profile() string {
-	profile := os.Getenv("ACT_PROFILE")
-	if profile {
-		return profile
-	} else {
-		return ""
-	}
+	return os.Getenv("ACT_PROFILE")
 }
 
 func String(pos int, defaultValue string) string {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/broccolimicro/pr/chp/timing"
+	"github.com/broccolimicro/pr/chp/param"
 )
 
 var Misconfigured = errors.New("Misconfigured")
