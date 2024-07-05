@@ -8,12 +8,13 @@ import (
 )
 
 func Out() string {
-	var pc []uintptr
-	callers := runtime.Callers(1, pc)
+	pc := make([]uintptr, 20)
+	callers := runtime.Callers(0, pc)
 	for i := 0; i < callers; i++ {
 		name := runtime.FuncForPC(pc[i]).Name()
-		if strings.HasPrefix(name, "TestUnit") {
-			return "test/" + name
+		start := strings.Index(name, "TestUnit")
+		if start >= 0 {
+			return "test/" + name[start:]
 		}
 	}
 
