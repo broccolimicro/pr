@@ -15,7 +15,11 @@ func Out() string {
 		name := runtime.FuncForPC(pc[i]).Name()
 		start := strings.Index(name, "TestUnit")
 		if start >= 0 {
-			return cwd + "/test/chp/" + name[start:]
+			result := "test/chp/" + name[start:]
+			if len(cwd) == 0 {
+				return result
+			}
+			return cwd + "/" + result
 		}
 	}
 

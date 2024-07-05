@@ -856,7 +856,7 @@ def createInjectExpect(chpPath, prsPath, act, chp):
 		return
 	
 	elif chp.name and chp.vdir:
-		chanpath = "{path}/top.dut.{name}.{recv}".format(
+		chanpath = "{path}/top.{name}.{recv}".format(
 			path=chpPath,
 			name=chp.name,
 			recv=("r" if chp.vdir == '?' else "s"),
@@ -964,7 +964,7 @@ def runBehaviors(search):
 	print(cmd)
 	os.system(cmd)
 
-def emitTest():
+def emitTest(search):
 	results = []
 
 	root = projectRoot()
@@ -974,11 +974,23 @@ def emitTest():
 	processes = parseActProcess()
 	tests = parseChpTest()
 
+	print("looking for \"{}\"".format(search))
+	pattern = None
+	if search != "":
+		pattern = re.compile(search)
+
+	first = True
 	testSearch = "^("
 	for i, test in enumerate(tests):
-		if i != 0:
-			testSearch += "|"
-		testSearch += test.chptest[0]
+		name = test.proc.name
+		if ':' in name:
+			idx = name.rindex(':')
+			name = name[idx+1:]
+
+		if name in processes and (not pattern or pattern.search(test.proc.name)):
+			if testSearch[-1] not in "(|":
+				testSearch += "|"
+			testSearch += test.chptest[0]
 	testSearch += ")$"
 
 	runBehaviors(testSearch)
@@ -990,23 +1002,26 @@ def emitTest():
 			name = name[idx+1:]
 
 		if name in processes:
-			proc = processes[name].flatten(test.proc.tmpl)
-			prsPath = test.createDir()
-			chpPath = test.chpPath()
-			relCwd = relativeCwd(root)
-			if relCwd != ".":
-				proc.path = relCwd + "/" + proc.path
-			if proc.path.startswith("prs/"):
-				proc.path = proc.path[4:]
+			if not pattern or pattern.search(test.proc.name):
+				proc = processes[name].flatten(test.proc.tmpl)
+				prsPath = test.createDir()
+				chpPath = test.chpPath()
+				relCwd = relativeCwd(root)
+				if relCwd != ".":
+					proc.path = relCwd + "/" + proc.path
+				if proc.path.startswith("prs/"):
+					proc.path = proc.path[4:]
 
-			for arg, val in zip(proc.args, test.proc.args):
-				createInjectExpect(chpPath, prsPath, arg, val)
+				for arg, val in zip(proc.args, test.proc.args):
+					createInjectExpect(chpPath, prsPath, arg, val)
 
-			results.append(prsPath)
-			emitTestAct(prsPath, test, proc)
+				results.append(prsPath)
+				emitTestAct(prsPath, test, proc)
 
-			emitPrsimRc(prsPath, "prsim.rc", test, proc, False)
-			emitPrsimRc(prsPath, "xyce.rc", test, proc, True)
+				emitPrsimRc(prsPath, "prsim.rc", test, proc, False)
+				emitPrsimRc(prsPath, "xyce.rc", test, proc, True)
+		else:
+			print("undefined process '{}'".format(name))
 
 	return results
 
@@ -1015,23 +1030,26 @@ def runSim(path, prs, prsim):
 	print(name + "...", end="")
 	sys.stdout.flush()
 
-	sim = subprocess.Popen(["prsim", prs], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=path)
-	sim.stdin.write("source {}\n".format(prsim))
-	sim.stdin.write("quit\n")
-	out, err = sim.communicate()
-	if err:
-		with open("{}/test.err".format(path), "w") as fptr:
-			print(err, file=fptr)
-	sim.stdin.close()
-
-	with open("{}/test.sim".format(path), "w") as fptr:
-		print(out, file=fptr)
+	out = ""
+	err = ""
+	if os.path.exists(os.path.join(path, prs)):
+		sim = subprocess.Popen(["prsim", prs], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=path)
+		sim.stdin.write("source {}\n".format(prsim))
+		sim.stdin.write("quit\n")
+		out, err = sim.communicate()
+		sim.stdin.close()
+		with open("{}/test.sim".format(path), "w") as fptr:
+			print(out, file=fptr)
 
 	PASS = '\033[92m'
 	WARNING = '\033[93m'
 	FAIL = '\033[91m'
 	ENDC = '\033[0m'
-	if "Could not" in out:
+	if not os.path.exists(os.path.join(path, "test.sim")):
+		print(FAIL + "ERROR" + ENDC)
+		if err:
+			print(err)
+	elif "Could not" in out:
 		print(FAIL + "MISCONFIGURED" + ENDC)
 	elif "unstable" in out:
 		print(FAIL + "UNSTABLE" + ENDC)
@@ -1048,7 +1066,8 @@ def runAll(tests, tech):
 	wd = os.getcwd()
 	for test in tests:
 		os.chdir(test)
-		os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" aflat -T"+tech+" -DDUT=true -DPRSIM=true test.act > test.prs")
+		if os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" aflat -T"+tech+" -DDUT=true -DPRSIM=true test.act > test.prs") != 0:
+			os.system("rm test.prs")
 		runSim(test, "test.prs", "prsim.rc")
 	os.chdir(wd)
 
@@ -1064,13 +1083,19 @@ if __name__ == "__main__":
 		elif sys.argv[1] == "vendor":
 			os.system("vend")
 		elif sys.argv[1] == "test":
-			tech = "sky130"
-			if len(sys.argv) > 2:
-				tech = shlex.quote(sys.argv[2])
+			tech = os.getenv("TECH", default="sky130")
 
-			tests = emitTest()
+			search = ""
+			if len(sys.argv) > 2:
+				search = sys.argv[2]
+
+			tests = emitTest(search)
 			runAll(tests, tech)
 		elif sys.argv[1] == "bench":
+			search = ""
+			if len(sys.argv) > 2:
+				search = sys.argv[2]
+
 			emitTest()
 		elif sys.argv[1] == "sim":
 			runSim(os.getcwd(), "test.prs", "prsim.rc")
