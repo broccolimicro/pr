@@ -67,6 +67,8 @@ func New(args ...string) (Globals, error) {
 	dir := "run"
 	if len(args) > 0 {
 		dir = args[0]
+	} else {
+		dir = param.Out()
 	}
 
 	var err error
@@ -78,7 +80,15 @@ func New(args ...string) (Globals, error) {
 			return nil, err
 		}
 	} else {
-		t = timing.NewProfileSet()
+		prof := param.Profile()
+		if prof != "" {
+			t, err = timing.LoadProfileSet(prof)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			t = timing.NewProfileSet()
+		}
 	}
 
 	name := "top"

@@ -6,6 +6,28 @@ import (
 	"strings"
 )
 
+func Out() string {
+	var pc []uintptr
+	callers = runtime.Callers(1, pc)
+	for i := 0; i < callers; i++ {
+		name := runtime.FuncForPC(pc[i]).Name()
+		if strings.HasPrefix(name, "TestUnit") {
+			return "test/" + name
+		}
+	}
+
+	return "test/Unknown"
+}
+
+func Profile() string {
+	profile := os.Getenv("ACT_PROFILE")
+	if profile {
+		return profile
+	} else {
+		return ""
+	}
+}
+
 func String(pos int, defaultValue string) string {
 	i := len(os.Args)-1
 	for ; i >= 0; i-- {
