@@ -1073,13 +1073,36 @@ def runAll(tests, tech):
 ###############################################################################
 if __name__ == "__main__":
 	tech = "sky130"
-	if len(sys.argv) > 1:
+	if len(sys.argv) <= 1 or sys.argv[1] == "--help" or sys.argv[1] == "-h":
+			print("""Usage: pr <command> ...
+
+A test generator for ACT. This connects Golang behavioral models to ACT process
+definitions for testing. It facilitates digital and analog simulation, and
+integrates with multiple waveform viewers.
+
+Global Commands:
+  init <module name>    initialize this module
+  vendor                vendor all dependencies
+  test [regex]          generate and run tests for all act files in this directory
+  bench [regex]         generate tests for all act files in this directory
+
+Test Commands: these commands should be executed from within a test directory.
+  build                 build the testbench using ACT
+  sim                   build and run the test using ACT and prsim
+  chan                  extract all channel tokens from "test.sim"
+  spice                 generate a testbench directory for the analog SPICE simulation.
+
+File Commands: these commands are executed on a specific file.
+  view <file>           open the appropriate waveform viewer, supports: *.sim *.vcd *.prn *.gtkw
+    -n                  optional flag to derandomize the timing for *.sim files for easier viewing
+""")
+	elif len(sys.argv) > 1:
 		if sys.argv[1] == "init" and len(sys.argv) > 2:
 			os.system("git init")
 			os.system("go mod init " + shlex.quote(sys.argv[2]))
 			os.system("mkdir -p prs chp")
 		elif sys.argv[1] == "vendor":
-			os.system("vend")
+			os.system("go mod vendor")
 		elif sys.argv[1] == "test":
 			tech = os.getenv("TECH", default="sky130")
 
@@ -1102,9 +1125,12 @@ if __name__ == "__main__":
 			buildChan("test.sim")
 		elif sys.argv[1] == "view":
 			if sys.argv[2].endswith(".sim"):
-				target = buildVCD(sys.argv[2])
+				normalize = False
+				if sys.argv[3] == "-n":
+					normalize = True
+				target = buildVCD(sys.argv[2], normalize)
 				os.system("gtkwave " + shlex.quote(target))
-			elif sys.argv[2].endswith(".vcd"):
+			elif sys.argv[2].endswith(".vcd") or sys.argv[2].endswith(".gtkw"):
 				os.system("gtkwave " + shlex.quote(sys.argv[2]))
 			elif sys.argv[2].endswith(".prn"):
 				os.system("gaw " + shlex.quote(sys.argv[2]))
