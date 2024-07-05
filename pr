@@ -743,28 +743,14 @@ class ChpTest:
 		name = shlex.quote(self.proc.test())
 		if name[0] == '\'' and name[-1] == '\'':
 			name = name[1:-1]
-		return os.getcwd() + "/test/" + name
+		return os.getcwd() + "/test/prs/" + name
+
+	def chpPath(self):
+		return os.getcwd() + "/test/chp/" + self.chptest[0] 
 
 	def createDir(self):
 		path = self.testPath()
-
-		chp = ""
-		for item in self.chptest[1:len(self.chptest)]:
-			if chp != "":
-				chp += " "
-			chp += shlex.quote(item)
-
-		cmd = 'go test ' + projectRoot() + '/... -v -run ' + shlex.quote("^"+self.chptest[0]+"$") + ' -args'
-		if "ACT_PROFILE" in os.environ:
-			cmd += ' \"' + projectRoot() + '/$ACT_PROFILE\"'
-		else:
-			cmd += ' \"\" '
-		cmd += ' \'' + path + '/chp\' ' + chp
-
-		os.system('mkdir -p \'' + path + '\'')
-		print(cmd)
-		os.system(cmd)
-		
+		os.system("mkdir -p \'{}\'".format(path))
 		return path
 
 def parseChpTest():
@@ -863,15 +849,15 @@ def writeFileStruct(files, values):
 
 
 # str, ActArg, ChpArg
-def createInjectExpect(path, act, chp):
+def createInjectExpect(chpPath, prsPath, act, chp):
 	if len(act.size) > 0:
 		for i in range(0, int(act.size[0])):
-			createInjectExpect(path, act.index(i), chp.index(i))
+			createInjectExpect(chpPath, prsPath, act.index(i), chp.index(i))
 		return
 	
 	elif chp.name and chp.vdir:
-		chanpath = "{path}/chp/top.dut.{name}.{recv}".format(
-			path=path,
+		chanpath = "{path}/top.dut.{name}.{recv}".format(
+			path=chpPath,
 			name=chp.name,
 			recv=("r" if chp.vdir == '?' else "s"),
 		)
@@ -883,7 +869,7 @@ def createInjectExpect(path, act, chp):
 					# read the header
 					rec = ChpStruct(line[10:])
 					rec.name = chp.name
-					files = openFileStruct(path, rec)
+					files = openFileStruct(prsPath, rec)
 				else:
 					inst = ChpStruct(line.split("\t")[1])
 					writeFileStruct(files, inst)
@@ -973,15 +959,30 @@ set g.sReset 0""", file=fptr)
 		else:
 			print("cycle", file=fptr)
 
+def runBehaviors(search):
+	cmd = "go test {}/... -v -run {} --args {}".format(projectRoot(), shlex.quote(search), shlex.quote(os.getcwd()))
+	print(cmd)
+	os.system(cmd)
 
 def emitTest():
+	results = []
+
 	root = projectRoot()
 	if root == "/":
 		print("pr test: go.mod file not found in current directory or any parent directory")
 
 	processes = parseActProcess()
 	tests = parseChpTest()
-	
+
+	testSearch = "^("
+	for i, test in enumerate(tests):
+		if i != 0:
+			testSearch += "|"
+		testSearch += test.chptest[0]
+	testSearch += ")$"
+
+	runBehaviors(testSearch)
+
 	for test in tests:
 		name = test.proc.name
 		if ':' in name:
@@ -990,7 +991,8 @@ def emitTest():
 
 		if name in processes:
 			proc = processes[name].flatten(test.proc.tmpl)
-			path = test.createDir()
+			prsPath = test.createDir()
+			chpPath = test.chpPath()
 			relCwd = relativeCwd(root)
 			if relCwd != ".":
 				proc.path = relCwd + "/" + proc.path
@@ -998,25 +1000,57 @@ def emitTest():
 				proc.path = proc.path[4:]
 
 			for arg, val in zip(proc.args, test.proc.args):
-				createInjectExpect(path, arg, val)
+				createInjectExpect(chpPath, prsPath, arg, val)
 
-			emitTestAct(path, test, proc)
+			results.append(prsPath)
+			emitTestAct(prsPath, test, proc)
 
-			emitPrsimRc(path, "prsim.rc", test, proc, False)
-			emitPrsimRc(path, "xyce.rc", test, proc, True)
+			emitPrsimRc(prsPath, "prsim.rc", test, proc, False)
+			emitPrsimRc(prsPath, "xyce.rc", test, proc, True)
 
-def runSim(prs, prsim):
-	sim = subprocess.Popen(["prsim", prs], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+	return results
+
+def runSim(path, prs, prsim):
+	name = os.path.basename(path)
+	print(name + "...", end="")
+	sys.stdout.flush()
+
+	sim = subprocess.Popen(["prsim", prs], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=path)
 	sim.stdin.write("source {}\n".format(prsim))
 	sim.stdin.write("quit\n")
 	out, err = sim.communicate()
 	if err:
-		print(err)
+		with open("{}/test.err".format(path), "w") as fptr:
+			print(err, file=fptr)
 	sim.stdin.close()
 
-	with open("test.sim", "w") as fptr:
+	with open("{}/test.sim".format(path), "w") as fptr:
 		print(out, file=fptr)
-	return out
+
+	PASS = '\033[92m'
+	WARNING = '\033[93m'
+	FAIL = '\033[91m'
+	ENDC = '\033[0m'
+	if "Could not" in out:
+		print(FAIL + "MISCONFIGURED" + ENDC)
+	elif "unstable" in out:
+		print(FAIL + "UNSTABLE" + ENDC)
+	elif "interference" in out:
+		print(FAIL + "INTERFERENCE" + ENDC)
+	elif "Mismatch in values" in out:
+		print(WARNING + "INCORRECT" + ENDC)
+	elif "Out of values" not in out:
+		print(FAIL + "DEADLOCK" + ENDC)
+	else:
+		print(PASS + "PASS" + ENDC)
+
+def runAll(tests, tech):
+	wd = os.getcwd()
+	for test in tests:
+		os.chdir(test)
+		os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" aflat -T"+tech+" -DDUT=true -DPRSIM=true test.act > test.prs")
+		runSim(test, "test.prs", "prsim.rc")
+	os.chdir(wd)
 
 # main
 ###############################################################################
@@ -1030,9 +1064,16 @@ if __name__ == "__main__":
 		elif sys.argv[1] == "vendor":
 			os.system("vend")
 		elif sys.argv[1] == "test":
+			tech = "sky130"
+			if len(sys.argv) > 2:
+				tech = shlex.quote(sys.argv[2])
+
+			tests = emitTest()
+			runAll(tests, tech)
+		elif sys.argv[1] == "bench":
 			emitTest()
 		elif sys.argv[1] == "sim":
-			runSim("test.prs", "prsim.rc")
+			runSim(os.getcwd(), "test.prs", "prsim.rc")
 			buildChan("test.sim")
 		elif sys.argv[1] == "view":
 			if sys.argv[2].endswith(".sim"):

@@ -8,17 +8,18 @@ import (
 )
 
 func Out() string {
+	cwd := String(1, "")
 	pc := make([]uintptr, 20)
 	callers := runtime.Callers(0, pc)
 	for i := 0; i < callers; i++ {
 		name := runtime.FuncForPC(pc[i]).Name()
 		start := strings.Index(name, "TestUnit")
 		if start >= 0 {
-			return "test/" + name[start:]
+			return cwd + "/test/chp/" + name[start:]
 		}
 	}
 
-	return "test/Unknown"
+	return "test/chp/Unknown"
 }
 
 func Profile() string {
