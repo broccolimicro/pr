@@ -286,7 +286,7 @@ def buildVCD(sim, normalize=False):
 			for l, (t, n) in zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", markers):
 				print("[markername] " + l + n, file=gptr)
 
-	return vcd
+	return gtkw
 
 # Helper Functions
 ###############################################################################
@@ -735,15 +735,13 @@ def parseChpArgs(line):
 	return result
 
 class ChpTest:
-	def __init__(self, proc, chptest):
+	def __init__(self, name, proc, chptest):
+		self.name = name
 		self.proc = proc
 		self.chptest = chptest
 
 	def testPath(self):
-		name = shlex.quote(self.proc.test())
-		if name[0] == '\'' and name[-1] == '\'':
-			name = name[1:-1]
-		return os.getcwd() + "/test/prs/" + name
+		return os.getcwd() + "/test/prs/" + self.name
 
 	def chpPath(self):
 		return os.getcwd() + "/test/chp/" + self.chptest[0] 
@@ -756,9 +754,9 @@ class ChpTest:
 def parseChpTest():
 	tests = []
 	for line in os.popen("find * -name '*.act' | xargs grep -rh \"^//.*TestUnit\""):
-		m = re.match(r'//\s*([^<]*)<([^>]*)>\(([^\)]*)\):(.*)', line)
+		m = re.match(r'//\s*([^ ]*) ([^<]*)<([^>]*)>\(([^\)]*)\):(.*)', line)
 		# TODO(edward.bingham) add support for multiple data streams for a single channel
-		tests.append(ChpTest(ActInstance(m.group(1), parseArgs(m.group(2)), parseChpArgs(m.group(3))), m.group(4).strip().split(" ")))
+		tests.append(ChpTest(m.group(1), ActInstance(m.group(2), parseArgs(m.group(3)), parseChpArgs(m.group(4))), m.group(5).strip().split(" ")))
 	return tests
 
 # Test Generator
@@ -1099,6 +1097,8 @@ if __name__ == "__main__":
 			emitTest()
 		elif sys.argv[1] == "sim":
 			runSim(os.getcwd(), "test.prs", "prsim.rc")
+			buildChan("test.sim")
+		elif sys.argv[1] == "chan":
 			buildChan("test.sim")
 		elif sys.argv[1] == "view":
 			if sys.argv[2].endswith(".sim"):
