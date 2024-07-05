@@ -203,6 +203,7 @@ type channel[T interface{}] struct {
 
 type Logger[T interface{}] interface {
 	Write(value T, t float64)
+	WriteHeader()
 	Close() error	
 }
 
@@ -255,6 +256,21 @@ func (l *logger[T]) Write(value T, t float64) {
 
 	if l.log != nil {
 		fmt.Fprintf(l.log, "%f\t%v\n", t, value)
+	}
+}
+
+func (l *logger[T]) WriteHeader() {
+	if l.log == nil {
+		var err error
+		l.log, err = os.Create(l.filename)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		var temp T
+		fmt.Fprintf(l.log, "time (ns)\t")
+		l.WriteType(reflect.TypeOf(temp))
+		fmt.Fprintf(l.log, "\n")
 	}
 }
 
@@ -544,6 +560,7 @@ func (s *sender[T]) SetGlobals(g Globals) {
 	s.g = g
 	if s.c.name != "" {
 		s.log = Log[T](filepath.Join(g.Dir(), g.Name()+"."+s.c.name+".s"))
+		s.log.WriteHeader()
 	}
 }
 
@@ -679,6 +696,7 @@ func (r *receiver[T]) SetGlobals(g Globals) {
 	r.g = g
 	if r.c.name != "" {
 		r.log = Log[T](filepath.Join(g.Dir(), g.Name()+"."+r.c.name+".r"))
+		r.log.WriteHeader()
 	}
 }
 

@@ -8,6 +8,285 @@ import enum
 import operator
 import copy
 import pprint
+import subprocess
+import datetime
+
+# shortenspice
+###############################################################################
+
+def shortenSpice(spice, out):
+	ckts = dict()
+	ids = dict()
+	with open(spice, 'r') as fptr:
+		with open(out, 'w') as optr:
+			for line in fptr:
+				line = line.split()
+				if line and line[0] == '.subckt':
+					ms = re.finditer(r'[a-zA-Z]', line[1])
+					if ms:
+						m = None
+						for m in ms:
+							pass
+						idx = m.span()[-1]
+						if idx < len(line[1]):
+							name = line[1][0:idx]
+							if name in ids:
+								ids[name] += 1
+							else:
+								ids[name] = 0
+							name += '_' + str(ids[name])
+							ckts[line[1]] = name
+							line[1] = name
+				elif line and line[0].startswith("x"):
+					i = 0
+					while i < len(line) and '=' in line[-1-i]:
+						i += 1
+					if i < len(line):
+						if line[-1-i] in ckts:
+							line[-1-i] = ckts[line[-1-i]]
+				print(' '.join(line), file=optr)
+
+# sim2chan
+###############################################################################
+
+def buildChan(sim, neutral=False, tohex=False):
+	values = {}
+	errors = {}
+	
+	length = 0
+	skip = False
+	cleanup = re.compile(r'\r[^\r]*\r')
+	with open(sim, "r") as fptr:
+		for l, line in enumerate(fptr):
+			if "$finish" in line:
+				break
+
+			if l == 0 and "Chronologic VCS simulator" in line:
+				skip = True
+
+			if skip and "Maximum DC iterations" in line:
+				skip = False
+			elif not skip and "DC iteration" not in line and "DC initialization" not in line and "End of operating" not in line and "Memory usage" not in line:
+				line = cleanup.sub('', line)
+				idx = max([len(v) for v in values.values()] or [0])
+				if len(line.strip()) > 0 and line[0] != '\t' and line[0] != '>':
+					if line[0:5] == "ERROR" or line[0:7] == "WARNING":
+						if idx not in errors:
+							errors[idx] = ""
+						errors[idx] += line
+					else:
+						value = [cell.strip(" \t\n{}()") for cell in line.split(': ')]
+						if len(value) == 2 and (neutral or value[1] != "neutral"):
+							if value[0] not in values:
+								values[value[0]] = []
+
+							if len(values[value[0]]) < length-1:
+								values[value[0]].extend([":"]*(length-len(values[value[0]])-1))
+
+							if tohex and value[1][0] in "0123456789":
+								values[value[0]].append("%X" % int(value[1]))
+							else:
+								values[value[0]].append(value[1])
+							
+							if len(values[value[0]]) > length:
+								length = len(values[value[0]])
+
+	max_len = 0
+	for key in values.keys():
+		if len(values[key]) > max_len:
+			max_len = len(values[key])
+
+	ks = values.keys()
+	keys = []
+	other = []
+	for k in ks:
+		if '[' in k:
+			idx = k[k.index('['):]
+			k = k[0:k.index('[')]
+			idx = [int(i) if ':' not in i else i for i in idx[1:-1].split('][')]
+			keys.append((k, idx))
+		else:
+			other.append(k)
+
+	keys = other + [k[0] + '[' + ']['.join([str(x) for x in k[1]]) + ']' for k in sorted(keys)]
+
+	prefix = sim[0:-4]
+	chan = prefix + '.chan'
+	with open(chan, "w") as fptr:
+		print('\t'.join(keys), file=fptr)
+		for i in range(0, max_len):
+			if i in errors:
+				print(errors[i], file=fptr)
+			print('\t'.join([values[key][i] if i < len(values[key]) else '' for key in keys]), file=fptr)
+
+		for err in [e for i,e in errors.items() if i >= max_len]:
+			print(err, file=fptr)
+	return chan
+
+# sim2vcd
+###############################################################################
+
+def bundle2int(bun):
+	value = -1
+	width = (len(bun)-1).bit_length()
+	for i, c in enumerate(bun):
+		if c == '1' and value == -1:
+			value = i
+		elif c == '1' and value >= 0:
+			value = -2
+	if value == -2:
+		return 'x'*width # illegal
+	elif value == -1:
+		return '-'*width # neutral
+	else:
+		result = str(bin(value))[2:]
+		result = '0'*(width-len(result)) + result
+		return result
+
+def vec2int(vec, sz):
+	result = ""
+	for i in range(0, len(vec), sz):
+		result = bundle2int(vec[i:i+sz]) + result
+	return result
+
+def uniq(lst):
+	used = set()
+	return [(t,n) for t,n in lst if t not in used and (used.add(t) or True)]
+
+def buildVCD(sim, normalize=False):
+	signals = {}
+	curid = ""
+	lasttime = -1
+	markers = []
+
+	prefix = sim[0:-4]
+	vcd = prefix + '.vcd'
+	gtkw = prefix + '.gtkw'
+	with open(sim, 'r') as fptr:
+		with open(vcd, 'w') as vptr:
+			# Header
+			print("$date", file=vptr)
+			print(datetime.datetime.now().strftime("%Y-%m-%d"), file=vptr)
+			print("$end", file=vptr)
+			print("$timescale 1ps $end", file=vptr)
+
+			for line in fptr:
+				line = line.strip()
+				if len(line) > 0 and line[0].isdigit():
+					line = re.split('[ \t]+', line)
+					curtime = int(line[0])
+					signal = line[1].replace(".", "_").replace("[", "").replace("]", "")
+					if signal not in signals:
+						signals[signal] = [signal, 1]
+
+					while True:
+						value = line[-1]
+						vec = line[-1].split('=')
+						if vec[-1][0] == '{':
+							vecname = vec[-2].replace(".", "_").replace(":", "_").replace("[", "").replace("]", "")
+							vecvalue = vec2int(vec[-1][1:-1], 2)
+							if vecname not in signals:
+								signals[vecname] = [vecname, len(vecvalue)]
+							del line[-1]
+						if vec[-1][0] == '(':
+							vecname = vec[-2].replace(".", "_").replace(":", "_").replace("[", "").replace("]", "")
+							vecvalue = vec2int(vec[-1][1:-1], len(vec[-1])-2)
+							if vecname not in signals:
+								signals[vecname] = [vecname, len(vecvalue)]
+							del line[-1]
+						else:
+							vecname = ""
+							vecvalue = ""
+							break
+			fptr.seek(0)
+
+			name = [33,33,33]
+			for key in reversed(sorted(signals.keys(), key=len)):
+				signals[key][0] = chr(name[0]) + chr(name[1]) + chr(name[2])
+				name[2] += 1
+				if name[2] > 126:
+					name[1] += 1
+					name[2] = 33
+				if name[1] > 126:
+					name[0] += 1
+					name[1] = 33
+
+				print("$var wire " + str(signals[key][1]) + " " + signals[key][0] + " " + key + " " + "$end", file=vptr)
+
+			print("$enddefinitions $end", file=vptr)
+			
+			# Initial Values
+			print("$dumpvars", file=vptr)
+			for key, value in signals.items():
+				if value[1] == 1:
+					print("x" + value[0], file=vptr)
+				else:
+					print("b" + "x"*value[1] + " " + value[0], file=vptr)
+			# print X
+			print("$end", file=vptr)
+
+			# Value Change Section
+			printtime = 0
+			lastprinttime = 0
+			for line in fptr:
+				line = line.strip()
+				if len(line) > 0:
+					if line.startswith("WARNING"):
+						if normalize:
+							markers.append((lastprinttime, "WARNING"))
+						else:
+							markers.append((lasttime, "WARNING"))
+					elif line.startswith("ERROR"):
+						if normalize:
+							markers.append((lastprinttime, "ERROR"))
+						else:
+							markers.append((lasttime, "ERROR"))
+					elif line[0].isdigit():
+						line = re.split('[ \t]+', line)
+						curtime = int(line[0])
+						signal = line[1].replace(".", "_").replace("[", "").replace("]", "")
+						value = line[3]
+						if curtime != lasttime:
+							if normalize:
+								print("#" + str(printtime), file=vptr)
+							else:
+								print("#" + str(curtime), file=vptr)
+							lastprinttime = printtime
+							printtime += 10
+							lasttime = curtime
+
+						print(value + signals[signal][0], file=vptr)
+
+						while True:
+							vec = line[-1].split('=')
+							if vec[-1][0] == '{':
+								vecname = vec[-2].replace(".", "_").replace(":", "_").replace("[", "").replace("]", "")
+								vecvalue = vec2int(vec[-1][1:-1], 2)
+								del line[-1]
+							elif vec[-1][0] == '(':
+								vecname = vec[-2].replace(".", "_").replace(":", "_").replace("[", "").replace("]", "")
+								vecvalue = vec2int(vec[-1][1:-1], len(vec[-1])-2)
+								del line[-1]
+							else:
+								vecname = ""
+								vecvalue = ""
+								break
+							
+							if vecname and vecname in signals:
+								if signals[vecname][1] == 1:
+									print(vecvalue + signals[vecname][0], file=vptr)
+								else:
+									print("b" + vecvalue + " " + signals[vecname][0], file=vptr)
+	
+		with open(gtkw, 'w') as gptr:
+			print("[dumpfile] \"" + os.getcwd() + "/" + vcd + "\"", file=gptr)
+			print("[savefile] \"" + os.getcwd() + "/" + gtkw + "\"", file=gptr)
+			markers = uniq(markers)
+			print("*1.0 0 " + " ".join([str(t) for t, n in markers]), file=gptr)
+			for l, (t, n) in zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ", markers):
+				print("[markername] " + l + n, file=gptr)
+
+	return vcd
 
 # Helper Functions
 ###############################################################################
@@ -277,11 +556,11 @@ class ActArg:
 		lines = []
 		if protocol:
 			req = self.signalName() + ".d[0:{rails}]".format(rails=self.signalRails())
-			data = chp.name + ("_C" if self.vtype.isBundledData() else "")
+			data = chp.name + (".C" if self.vtype.isBundledData() else "")
 			lines += prsimEmitChan(self.signalName(), protocol, req, ack, data, chp.vdir)
 
 		if self.vtype.name.startswith("bus2_") or self.vtype.name.startswith("bus_"):
-			data = chp.name + ("_D" if self.vtype.isBundledData() else "")
+			data = chp.name + (".D" if self.vtype.isBundledData() else "")
 			lines += prsimEmitBus(self.name, clk, self.vtype.params[0], posedge, self.vtype.name.startswith("bus2_"), data, chp.vdir)
 		return lines
 
@@ -475,7 +754,7 @@ class ChpTest:
 				chp += " "
 			chp += shlex.quote(item)
 
-		cmd = 'go test ' + projectRoot() + '/... -v -run ' + shlex.quote(self.chptest[0]) + ' -args'
+		cmd = 'go test ' + projectRoot() + '/... -v -run ' + shlex.quote("^"+self.chptest[0]+"$") + ' -args'
 		if "ACT_PROFILE" in os.environ:
 			cmd += ' \"' + projectRoot() + '/$ACT_PROFILE\"'
 		else:
@@ -548,7 +827,7 @@ def prsimEmitBus(name, clk, wires, posedge, pair, chp, vdir):
 def openFileStruct(path, chp, name=""):
 	if len(chp.name) > 0:
 		if len(name) > 0:
-			name += "_"
+			name += "."
 		name += chp.name
 
 	if len(chp.members) > 0:
@@ -726,6 +1005,19 @@ def emitTest():
 			emitPrsimRc(path, "prsim.rc", test, proc, False)
 			emitPrsimRc(path, "xyce.rc", test, proc, True)
 
+def runSim(prs, prsim):
+	sim = subprocess.Popen(["prsim", prs], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+	sim.stdin.write("source {}\n".format(prsim))
+	sim.stdin.write("quit\n")
+	out, err = sim.communicate()
+	if err:
+		print(err)
+	sim.stdin.close()
+
+	with open("test.sim", "w") as fptr:
+		print(out, file=fptr)
+	return out
+
 # main
 ###############################################################################
 if __name__ == "__main__":
@@ -740,21 +1032,15 @@ if __name__ == "__main__":
 		elif sys.argv[1] == "test":
 			emitTest()
 		elif sys.argv[1] == "sim":
-			os.system("prsim " + " ".join([shlex.quote(arg) for arg in sys.argv[2:]]))
+			runSim("test.prs", "prsim.rc")
+			buildChan("test.sim")
 		elif sys.argv[1] == "view":
 			if sys.argv[2].endswith(".sim"):
-				target = sys.argv[2][0:-4] + ".vcd"
-				os.system("sim2vcd.py " + shlex.quote(sys.argv[2]))
-				os.system("gtkwave " + target)
+				target = buildVCD(sys.argv[2])
+				os.system("gtkwave " + shlex.quote(target))
 			elif sys.argv[2].endswith(".vcd"):
-				os.system("gtkwave " + sys.argv[2])
+				os.system("gtkwave " + shlex.quote(sys.argv[2]))
 			elif sys.argv[2].endswith(".prn"):
-				hasIndex = False
-				with open(sys.argv[2], 'r') as fptr:
-					if fptr.readline().startswith("Index"):
-						hasIndex = True
-				if hasIndex:
-					os.system("sed -i 's/^[^ ]* *//g' " + shlex.quote(sys.argv[2]))
 				os.system("gaw " + shlex.quote(sys.argv[2]))
 		elif sys.argv[1] == "build" and os.path.exists("test.act") and os.path.exists("prsim.rc"):
 			tech = "sky130"
@@ -769,6 +1055,6 @@ if __name__ == "__main__":
 				os.system("rm -rf spice")
 			os.system("ACT_PATH=\"" + projectRoot() + "/prs:$ACT_PATH\" prspice -C " + tech + " -p 'testbench<>' -i 'dut' -s 'g.Vdd=1.8v;g.GND=0.0v;gwrap.Vdd=1.8v;gwrap.GND=0.0v' test.act xyce.rc -o spice")
 			os.system("mv spice/dut.spi spice/long.spi")
-			os.system("shortenspice spice/long.spi > spice/dut.spi")
+			shortenSpice("spice/long.spi", "spice/dut.spi")
 			os.system("cp *.dat spice")
 
